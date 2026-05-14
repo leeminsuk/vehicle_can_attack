@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hyundai Sonata — CAN Bus Security Simulator</title>
+<style>
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--bg4:#2d333b;
+  --border:#30363d;--border2:#444c56;
+  --text:#e6edf3;--text2:#8b949e;--text3:#6e7681;
+  --green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;--purple:#bc8cff;--orange:#ffa657;
+  --mono:'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh}
+a{color:var(--blue);text-decoration:none}
+
+/* ── LAYOUT ── */
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.logo{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green);letter-spacing:.05em}
+.logo span{color:var(--text2)}
+.header-sub{font-size:12px;color:var(--text3);margin-left:4px}
+.badge-pill{font-size:10px;padding:3px 8px;border-radius:20px;font-weight:600;letter-spacing:.03em}
+.badge-r{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+.badge-t{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3)}
+.badge-sim{background:rgba(88,166,255,.15);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.badge-warn{background:rgba(210,153,34,.15);color:var(--yellow);border:1px solid rgba(210,153,34,.3)}
+
+.main{padding:16px 20px;max-width:1600px;margin:0 auto}
+
+/* ── CONTROLS ── */
+.ctrl-panel{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+.ctrl-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.ctrl-row:last-child{margin-bottom:0}
+.btn{padding:6px 14px;border:1px solid var(--border2);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;background:var(--bg3);color:var(--text)}
+.btn:hover{background:var(--bg4)}
+.btn.primary{background:#1a7f37;border-color:#2ea043;color:#fff}
+.btn.primary:hover{background:#2ea043}
+.btn.danger{background:#6e1212;border-color:#f85149;color:#fff}
+.btn.danger:hover{background:#a0211e}
+.btn.active{border-color:var(--blue);color:var(--blue)}
+.btn.capture-off{border-color:var(--yellow);color:var(--yellow);background:rgba(210,153,34,.1)}
+.btn.capture-off:hover{background:rgba(210,153,34,.2)}
+.btn.capture-on{border-color:var(--red);color:#fff;background:#b35c00;animation:capturePulse 1s ease-in-out infinite}
+.btn.capture-on:hover{background:#d06800}
+@keyframes capturePulse{0%,100%{box-shadow:0 0 0 0 rgba(248,81,73,.4)}50%{box-shadow:0 0 0 5px rgba(248,81,73,0)}}
+.capture-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);margin-left:4px}
+.capture-badge.active{color:var(--red)}
+.capture-badge .rec-dot{width:7px;height:7px;border-radius:50%;background:var(--red);animation:capturePulse .8s infinite}
+.atk-btn{padding:7px 14px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;background:var(--bg3);color:var(--text2)}
+.atk-btn:hover{background:var(--bg4);color:var(--text)}
+.atk-btn.sel-flood{border-color:var(--red)!important;background:rgba(248,81,73,.1)!important;color:var(--red)!important}
+.atk-btn.sel-spoof{border-color:var(--purple)!important;background:rgba(188,140,255,.1)!important;color:var(--purple)!important}
+.atk-btn.sel-fuzz{border-color:var(--orange)!important;background:rgba(255,166,87,.1)!important;color:var(--orange)!important}
+.atk-btn.sel-none{border-color:var(--green)!important;background:rgba(63,185,80,.1)!important;color:var(--green)!important}
+.status-indicator{display:flex;align-items:center;gap:6px;font-size:12px;margin-left:auto}
+.dot{width:8px;height:8px;border-radius:50%}
+.dot.running{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 1s infinite}
+.dot.stopped{background:var(--text3)}
+.dot.atk{background:var(--red);box-shadow:0 0 6px var(--red);animation:pulse .5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── SPEED METER ── */
+.attack-desc{font-size:11px;color:var(--text3);margin-top:2px}
+.atk-desc-flood{color:rgba(248,81,73,.8)}
+.atk-desc-spoof{color:rgba(188,140,255,.8)}
+.atk-desc-fuzz{color:rgba(255,166,87,.8)}
+
+/* ── METRIC ROW ── */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px}
+.metric{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.metric-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.metric-val{font-size:22px;font-weight:700;font-family:var(--mono);color:var(--text)}
+.metric-val.ok{color:var(--green)}
+.metric-val.warn{color:var(--yellow)}
+.metric-val.crit{color:var(--red)}
+.metric-sub{font-size:10px;color:var(--text3);margin-top:2px}
+
+/* ── GRID LAYOUT ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.grid3{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px}
+@media(max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* ── PANEL ── */
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.panel-head{background:var(--bg3);border-bottom:1px solid var(--border);padding:8px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);display:flex;align-items:center;justify-content:space-between}
+.panel-body{padding:10px 12px}
+
+/* ── CAN FRAME TABLE ── */
+.frame-wrap{overflow-x:auto;max-height:360px;overflow-y:auto}
+.frame-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;white-space:nowrap}
+.frame-table thead{position:sticky;top:0;z-index:2}
+.frame-table th{background:var(--bg3);padding:6px 8px;text-align:left;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);font-weight:600;font-family:inherit}
+.frame-table td{padding:4px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+.frame-table tr.row-r td{color:var(--text2)}
+.frame-table tr.row-t td{color:var(--red);background:rgba(248,81,73,.05)}
+.frame-table tr.row-spoof td{color:var(--purple);background:rgba(188,140,255,.06)}
+.frame-table tr.row-fuzz td{color:var(--orange);background:rgba(255,166,87,.06)}
+.frame-table tr.new-frame{animation:fadeSlide .25s ease}
+@keyframes fadeSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.byte-cell{display:inline-block;font-family:var(--mono);font-size:11px}
+.byte-cell.changed{background:rgba(248,81,73,.3);color:#ffa0a0;border-radius:2px;padding:0 2px}
+.byte-cell.injected{background:rgba(188,140,255,.3);color:#d8baff;border-radius:2px;padding:0 2px}
+.byte-cell.fuzzed{background:rgba(255,166,87,.3);color:#ffd0a0;border-radius:2px;padding:0 2px;animation:blink .35s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.lbl{display:inline-block;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700;font-family:var(--mono)}
+.lbl-R{background:rgba(63,185,80,.15);color:var(--green)}
+.lbl-T{background:rgba(248,81,73,.15);color:var(--red)}
+.lbl-S{background:rgba(188,140,255,.15);color:var(--purple)}
+.lbl-F{background:rgba(255,166,87,.15);color:var(--orange)}
+
+/* ── VEHICLE STATE ── */
+.veh-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;padding:10px 12px}
+.veh-item{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;text-align:center;transition:border-color .3s,background .3s}
+.veh-item.anomaly{border-color:var(--red);background:rgba(248,81,73,.08)}
+.veh-item.anomaly .vi-val{color:var(--red)}
+.vi-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.vi-val{font-size:18px;font-weight:700;font-family:var(--mono);color:var(--text)}
+.vi-unit{font-size:9px;color:var(--text3);margin-top:2px}
+.vi-src{font-size:9px;color:var(--text3);margin-top:3px;font-family:var(--mono)}
+
+/* ── TIMELINE CHART ── */
+.chart-wrap{position:relative;height:120px;padding:8px 12px}
+.chart-legend{display:flex;gap:12px;font-size:10px;color:var(--text3);padding:0 12px 6px}
+.cl-item{display:flex;align-items:center;gap:4px}
+.cl-sq{width:8px;height:8px;border-radius:1px}
+
+/* ── BUS LOAD BAR ── */
+.bus-bar-wrap{height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;margin:4px 0}
+.bus-bar{height:100%;border-radius:4px;transition:width .3s,background .3s}
+
+/* ── BYTE DIFF ── */
+.diff-row{display:grid;grid-template-columns:70px 90px 1fr 1fr 50px;gap:6px;align-items:center;padding:5px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px}
+.diff-row:hover{background:var(--bg3)}
+.diff-row.changed-row{background:rgba(248,81,73,.04)}
+.diff-row.spoof-row{background:rgba(188,140,255,.04)}
+.diff-row.fuzz-row{background:rgba(255,166,87,.04)}
+.diff-head{background:var(--bg3);border-bottom:1px solid var(--border);padding:5px 12px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;display:grid;grid-template-columns:70px 90px 1fr 1fr 50px;gap:6px;font-weight:600}
+.delta-badge{font-size:10px;font-weight:700;font-family:var(--mono)}
+.delta-ok{color:var(--text3)}
+.delta-warn{color:var(--yellow)}
+.delta-crit{color:var(--red)}
+.delta-purple{color:var(--purple)}
+
+/* ── IDS LOG ── */
+.ids-wrap{max-height:160px;overflow-y:auto}
+.ids-row{display:flex;gap:8px;font-size:11px;padding:5px 12px;border-bottom:1px solid var(--border);font-family:var(--mono)}
+.ids-ts{color:var(--text3);min-width:70px;flex-shrink:0}
+.ids-tag{min-width:60px;flex-shrink:0}
+.ids-msg{color:var(--text2)}
+.ids-msg.crit{color:var(--red)}
+.ids-msg.warn{color:var(--yellow)}
+.ids-msg.info{color:var(--blue)}
+.ids-msg.ok{color:var(--green)}
+.ids-tag.tag-flood{color:var(--red)}
+.ids-tag.tag-spoof{color:var(--purple)}
+.ids-tag.tag-fuzz{color:var(--orange)}
+.ids-tag.tag-ids{color:var(--blue)}
+.ids-tag.tag-sys{color:var(--text3)}
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border2)}
+
+/* ── SPEED GAUGE SVG ── */
+.speed-gauge{display:flex;flex-direction:column;align-items:center;padding:10px 0}
+
+/* ── ECU STATUS ── */
+.ecu-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;padding:10px 12px}
+.ecu-chip{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:5px 10px;font-size:11px;display:flex;align-items:center;gap:6px}
+.ecu-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.ecu-chip.comp{border-color:var(--red);background:rgba(248,81,73,.07)}
+.ecu-chip.comp .ecu-dot{background:var(--red)}
+.ecu-chip .ecu-dot{background:var(--green)}
+.ecu-name{flex:1;color:var(--text2);font-family:var(--mono);font-size:10px}
+.ecu-state{font-size:10px;color:var(--text3)}
+.ecu-state.crit{color:var(--red)}
+
+footer{text-align:center;padding:16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border);margin-top:16px}
+footer span{color:var(--text2)}
+
+/* ── Visual Simulator ── */
+.vis-panel{margin-bottom:14px}
+.vs-wrap{display:grid;grid-template-columns:260px 1fr 310px;gap:0;overflow:hidden}
+@media(max-width:1200px){.vs-wrap{grid-template-columns:240px 1fr 280px}}
+@media(max-width:900px){.vs-wrap{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.vs-wrap{grid-template-columns:1fr}}
+.vs-gauges{padding:12px;display:flex;flex-direction:column;gap:8px;align-items:center;border-right:1px solid var(--border)}
+.gauge-box{display:flex;flex-direction:column;align-items:center;width:100%}
+.gauge-title{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;font-weight:600}
+.gauge-svg{width:100%;overflow:visible}
+.mini-row{display:flex;gap:5px;width:100%;margin-top:4px}
+.mini-stat{flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:5px 6px;text-align:center}
+.mini-label{font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.mini-val{font-size:14px;font-weight:700;font-family:var(--mono);color:var(--text);transition:color .3s}
+.mini-val.atk-val{color:var(--red);animation:pulseR .4s ease-in-out infinite}
+@keyframes pulseR{0%,100%{opacity:1}50%{opacity:.5}}
+.vs-car{display:flex;flex-direction:column;border-right:1px solid var(--border)}
+.vs-car-body{flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;padding:12px;min-height:200px}
+.car-canvas{border-radius:6px;display:block}
+.scanline-overlay{position:absolute;inset:12px;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.07) 2px,rgba(0,0,0,.07) 4px);pointer-events:none;border-radius:6px;z-index:2}
+.car-state-text{position:absolute;bottom:18px;left:0;right:0;text-align:center;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.1em;pointer-events:none;z-index:3;text-shadow:0 1px 6px rgba(0,0,0,.9)}
+.warn-bar{background:var(--bg3);border-top:1px solid var(--border);padding:7px 12px;display:flex;flex-wrap:wrap;gap:5px;flex-shrink:0}
+.wl{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:3px 8px;border-radius:3px;border:1px solid transparent;font-family:var(--mono);opacity:.2;transition:opacity .3s,box-shadow .3s}
+.wl.on{opacity:1}
+.wl-abs{color:#f85149;border-color:rgba(248,81,73,.4);background:rgba(248,81,73,.1)}
+.wl-eng{color:#d29922;border-color:rgba(210,153,34,.4);background:rgba(210,153,34,.1)}
+.wl-str{color:#ffa657;border-color:rgba(255,166,87,.4);background:rgba(255,166,87,.1)}
+.wl-spd{color:#f85149;border-color:rgba(248,81,73,.4);background:rgba(248,81,73,.1)}
+.wl-bus{color:#f85149;border-color:rgba(248,81,73,.4);background:rgba(248,81,73,.1)}
+.wl-ids{color:#bc8cff;border-color:rgba(188,140,255,.4);background:rgba(188,140,255,.1)}
+.wl-ok{color:#3fb950;border-color:rgba(63,185,80,.4);background:rgba(63,185,80,.1)}
+.wl.pulse{animation:wlPulse .5s ease-in-out infinite}
+@keyframes wlPulse{0%,100%{opacity:1;box-shadow:0 0 8px currentColor}50%{opacity:.35;box-shadow:none}}
+.spd-compare{padding:8px 12px;border-top:1px solid var(--border);display:none;flex-shrink:0}
+.spd-compare.show{display:block}
+.spd-cmp-title{font-size:9px;color:var(--red);margin-bottom:5px;font-weight:700;letter-spacing:.06em}
+.spd-cmp-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:10px;font-family:var(--mono)}
+.spd-cmp-lbl{color:var(--text3);width:60px;flex-shrink:0}
+.spd-cmp-val{font-weight:700;width:52px;flex-shrink:0;text-align:right}
+.spd-cmp-bar{flex:1;height:4px;background:var(--bg);border-radius:2px;overflow:hidden}
+.spd-cmp-fill{height:100%;border-radius:2px;transition:width .4s}
+.vs-ai{display:flex;flex-direction:column}
+.ai-key-row{padding:8px 12px;display:flex;gap:5px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ai-key-input{flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:4px;padding:5px 8px;font-size:11px;color:var(--text);font-family:var(--mono);outline:none;min-width:0}
+.ai-key-input:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(88,166,255,.12)}
+.ai-key-input::placeholder{color:var(--text3)}
+.ai-eye-btn{padding:5px 8px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;color:var(--text3);cursor:pointer;font-size:12px;flex-shrink:0;transition:color .15s}
+.ai-eye-btn:hover{color:var(--text);background:var(--bg4)}
+.ai-model-row{padding:5px 12px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.ai-model-label{font-size:10px;color:var(--text3)}
+.ai-sel{background:var(--bg3);border:1px solid var(--border2);border-radius:3px;padding:2px 6px;font-size:10px;color:var(--text2);cursor:pointer;font-family:inherit;outline:none}
+.ai-sel:focus{border-color:var(--blue)}
+.ai-analyze-row{padding:8px 12px;flex-shrink:0;border-bottom:1px solid var(--border)}
+.ai-analyze-btn{width:100%;padding:7px;font-size:11px;font-weight:600;border:1px solid var(--border2);border-radius:6px;background:var(--bg3);color:var(--text);cursor:pointer;font-family:inherit;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.ai-analyze-btn:hover:not(:disabled){background:rgba(88,166,255,.1);border-color:var(--blue);color:var(--blue)}
+.ai-analyze-btn:disabled{opacity:.35;cursor:not-allowed}
+.ai-analyze-btn.loading{border-color:var(--yellow)!important;color:var(--yellow)!important;background:rgba(210,153,34,.08)!important}
+.ai-response-area{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:7px;min-height:120px;max-height:250px}
+.ai-bubble{border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:11px;line-height:1.65;white-space:pre-wrap}
+.ai-bubble.sys{color:var(--text3);font-style:italic;background:transparent;border-color:transparent}
+.ai-bubble.ai{color:var(--text2);background:rgba(88,166,255,.05);border-color:rgba(88,166,255,.22)}
+.ai-bubble.err{color:var(--red);background:rgba(248,81,73,.05);border-color:rgba(248,81,73,.22)}
+.ai-typing-row{display:flex;align-items:center;gap:4px;padding:6px 10px;border:1px solid var(--border);border-radius:6px}
+.ai-dot{width:5px;height:5px;border-radius:50%;background:var(--blue);animation:aiDot .9s ease infinite}
+.ai-dot:nth-child(2){animation-delay:.18s}
+.ai-dot:nth-child(3){animation-delay:.36s}
+@keyframes aiDot{0%,80%,100%{transform:scale(.7);opacity:.5}40%{transform:scale(1.2);opacity:1}}
+.ai-footer-hint{font-size:9px;color:var(--text3);padding:5px 12px;border-top:1px solid var(--border);text-align:center;flex-shrink:0}
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">CAN<span>//</span>SEC</div>
+  <div class="header-sub">Hyundai Sonata — Real CAN Bus Attack Simulator</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <span class="badge-pill badge-r">Normal (R)</span>
+    <span class="badge-pill badge-t">Flooding (T)</span>
+    <span class="badge-pill badge-sim">Spoofing (sim)</span>
+    <span class="badge-pill badge-sim" style="color:var(--orange);border-color:rgba(255,166,87,.3)">Fuzzing (sim)</span>
+  </div>
+  <div style="margin-left:auto;font-size:11px;color:var(--text3)">Dataset: OTIDS Sonata 2017 &nbsp;|&nbsp; 500 Kbps</div>
+</div>
+
+<div class="main">
+
+<!-- ── CONTROLS ── -->
+<div class="ctrl-panel">
+  <div class="ctrl-row">
+    <button class="btn primary" id="startBtn" onclick="startSim()">▶ Start</button>
+    <button class="btn danger" id="stopBtn" onclick="stopSim()" style="display:none">■ Stop</button>
+    <button class="btn" onclick="resetSim()">↺ Reset</button>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>
+    <button class="btn capture-off" id="captureBtn" onclick="toggleCapture()" disabled title="Start 후 사용 가능">⏺ Capture</button>
+    <span class="capture-badge" id="captureBadge">
+      <span id="captureCount" style="font-family:var(--mono)">0 frames</span>
+    </span>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>
+    <span style="font-size:11px;color:var(--text3)">Attack mode:</span>
+    <button class="atk-btn sel-none" id="btn_none" onclick="setAtk('none')">✓ Normal</button>
+    <button class="atk-btn" id="btn_flood" onclick="setAtk('flood')">⚡ Flooding (real data)</button>
+    <button class="atk-btn" id="btn_spoof" onclick="setAtk('spoof')">🎭 Spoofing (sim)</button>
+    <button class="atk-btn" id="btn_fuzz" onclick="setAtk('fuzz')">🔀 Fuzzing (sim)</button>
+    <div class="status-indicator">
+      <div class="dot stopped" id="statusDot"></div>
+      <span id="statusTxt" style="font-size:12px;color:var(--text2)">Stopped</span>
+    </div>
+  </div>
+  <div id="atkDesc" style="font-size:11px;color:var(--text3);padding:2px 0">
+    Normal 모드: Hyundai Sonata 실제 CAN 데이터 (R 레이블) 재생
+  </div>
+</div>
+
+
+<!-- ── VISUAL SIMULATOR PANEL ── -->
+<div class="panel vis-panel">
+  <div class="panel-head">
+    <span>Visual Simulator</span>
+    <span style="font-size:10px;color:var(--text3)">Live Vehicle Visualization</span>
+  </div>
+  <div class="vs-wrap">
+    <!-- LEFT: Gauges -->
+    <div class="vs-gauges">
+      <div class="gauge-box">
+        <div class="gauge-title">Speed</div>
+        <svg class="gauge-svg" viewBox="0 0 220 175" id="spdGaugeSvg">
+          <path id="spdBgArc" d="M 57.70,147.30 A 74,74 0 1,1 162.30,147.30" fill="none" stroke="#21262d" stroke-width="18" stroke-linecap="round"/>
+          <path id="spdZoneGreen" fill="none" stroke="#1a7f37" stroke-width="18" stroke-linecap="round" opacity="0.7"/>
+          <path id="spdZoneYellow" fill="none" stroke="#9a7000" stroke-width="18" stroke-linecap="round" opacity="0.7"/>
+          <path id="spdZoneRed" fill="none" stroke="#8b1010" stroke-width="18" stroke-linecap="round" opacity="0.7"/>
+          <path id="spdActiveFill" fill="none" stroke="#3fb950" stroke-width="18" stroke-linecap="round" opacity="0.85"/>
+          <g id="spdTicks"></g>
+          <g id="spdNeedleG" transform="rotate(225,110,95)">
+            <line x1="110" y1="95" x2="110" y2="30" stroke="#e6edf3" stroke-width="2" stroke-linecap="round"/>
+            <line x1="110" y1="95" x2="110" y2="107" stroke="#e6edf3" stroke-width="2" opacity=".3"/>
+          </g>
+          <circle cx="110" cy="95" r="7" fill="#1a1f24" stroke="#444c56" stroke-width="1.5"/>
+          <circle cx="110" cy="95" r="3" fill="#58a6ff"/>
+          <text id="spdText" x="110" y="83" text-anchor="middle" fill="#e6edf3" font-size="22" font-weight="700" font-family="'Courier New',monospace">0</text>
+          <text x="110" y="96" text-anchor="middle" fill="#6e7681" font-size="9" font-family="sans-serif">km/h</text>
+          <text x="42" y="158" text-anchor="middle" fill="#6e7681" font-size="9" font-family="sans-serif">0</text>
+          <text x="178" y="158" text-anchor="middle" fill="#6e7681" font-size="9" font-family="sans-serif">260</text>
+        </svg>
+      </div>
+      <div class="gauge-box">
+        <div class="gauge-title">RPM</div>
+        <svg class="gauge-svg" viewBox="0 0 180 140" id="rpmGaugeSvg">
+          <path id="rpmBgArc" fill="none" stroke="#21262d" stroke-width="15" stroke-linecap="round"/>
+          <path id="rpmZoneGreen" fill="none" stroke="#1a7f37" stroke-width="15" stroke-linecap="round" opacity="0.7"/>
+          <path id="rpmZoneYellow" fill="none" stroke="#9a7000" stroke-width="15" stroke-linecap="round" opacity="0.7"/>
+          <path id="rpmZoneRed" fill="none" stroke="#8b1010" stroke-width="15" stroke-linecap="round" opacity="0.7"/>
+          <path id="rpmActiveFill" fill="none" stroke="#3fb950" stroke-width="15" stroke-linecap="round" opacity="0.85"/>
+          <g id="rpmTicks"></g>
+          <g id="rpmNeedleG" transform="rotate(225,90,78)">
+            <line x1="90" y1="78" x2="90" y2="26" stroke="#e6edf3" stroke-width="2" stroke-linecap="round"/>
+            <line x1="90" y1="78" x2="90" y2="88" stroke="#e6edf3" stroke-width="2" opacity=".3"/>
+          </g>
+          <circle cx="90" cy="78" r="6" fill="#1a1f24" stroke="#444c56" stroke-width="1.5"/>
+          <circle cx="90" cy="78" r="2.5" fill="#58a6ff"/>
+          <text id="rpmText" x="90" y="68" text-anchor="middle" fill="#e6edf3" font-size="18" font-weight="700" font-family="'Courier New',monospace">0</text>
+          <text x="90" y="79" text-anchor="middle" fill="#6e7681" font-size="8" font-family="sans-serif">x1000 rpm</text>
+          <text x="30" y="126" text-anchor="middle" fill="#6e7681" font-size="8" font-family="sans-serif">0</text>
+          <text x="150" y="126" text-anchor="middle" fill="#6e7681" font-size="8" font-family="sans-serif">8</text>
+        </svg>
+      </div>
+      <div class="mini-row">
+        <div class="mini-stat"><div class="mini-label">Gear</div><div class="mini-val" id="vs_gear">N</div></div>
+        <div class="mini-stat"><div class="mini-label">Throttle</div><div class="mini-val" id="vs_thr">0%</div></div>
+        <div class="mini-stat"><div class="mini-label">Steer</div><div class="mini-val" id="vs_steer">0&deg;</div></div>
+      </div>
+    </div>
+    <!-- MIDDLE: Car Canvas -->
+    <div class="vs-car">
+      <div class="vs-car-body">
+        <canvas id="carCanvas" class="car-canvas" width="340" height="220"></canvas>
+        <div class="scanline-overlay"></div>
+        <div class="car-state-text" id="carStateTxt" style="color:#3fb950">NORMAL</div>
+      </div>
+      <div class="warn-bar">
+        <span class="wl wl-ok on" id="wl_ok">&#10003; NORMAL</span>
+        <span class="wl wl-abs" id="wl_abs">&#9888; ABS</span>
+        <span class="wl wl-eng" id="wl_eng">&#9881; ENGINE</span>
+        <span class="wl wl-str" id="wl_str">&#8635; STEER</span>
+        <span class="wl wl-spd" id="wl_spd">&#9889; SPEED</span>
+        <span class="wl wl-bus" id="wl_bus">&#128308; BUS ERR</span>
+        <span class="wl wl-ids" id="wl_ids">&#128270; IDS</span>
+      </div>
+      <div class="spd-compare" id="spdCompare">
+        <div class="spd-cmp-title">SPEED MISMATCH DETECTED</div>
+        <div class="spd-cmp-row">
+          <span class="spd-cmp-lbl">CAN(spoof)</span>
+          <span class="spd-cmp-val" id="spdCmpSpoof" style="color:var(--red)">0 km/h</span>
+          <div class="spd-cmp-bar"><div class="spd-cmp-fill" id="spdCmpSpoofBar" style="background:var(--red);width:0%"></div></div>
+        </div>
+        <div class="spd-cmp-row">
+          <span class="spd-cmp-lbl">Real(est.)</span>
+          <span class="spd-cmp-val" id="spdCmpReal" style="color:var(--green)">0 km/h</span>
+          <div class="spd-cmp-bar"><div class="spd-cmp-fill" id="spdCmpRealBar" style="background:var(--green);width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+    <!-- RIGHT: AI Analysis -->
+    <div class="vs-ai">
+      <div class="ai-key-row">
+        <input class="ai-key-input" type="password" id="aiKeyInput" placeholder="OpenAI API Key (sk-...)" oninput="onApiKeyChange()"/>
+        <button class="ai-eye-btn" id="aiEyeBtn" onclick="toggleKeyVis()" title="Show/hide key">&#128065;</button>
+      </div>
+      <div class="ai-model-row">
+        <span class="ai-model-label">Model:</span>
+        <select class="ai-sel" id="aiModel">
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
+          <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+        </select>
+        <span class="ai-model-label" style="margin-left:4px">Lang:</span>
+        <select class="ai-sel" id="aiLang">
+          <option value="ko">&#54620;&#44397;&#50612;</option>
+          <option value="en">English</option>
+        </select>
+        <button class="btn" style="margin-left:auto;font-size:10px;padding:3px 8px" onclick="clearAiHistory()">Clear</button>
+      </div>
+      <div class="ai-analyze-row">
+        <button class="ai-analyze-btn" id="aiAnalyzeBtn" disabled onclick="analyzeWithAI()">&#128269; Analyze Current Attack with AI</button>
+      </div>
+      <div class="ai-response-area" id="aiResponseArea">
+        <div class="ai-bubble sys">&#128273; OpenAI API &#53412;&#47484; &#51077;&#47141;&#54616;&#47732; &#54788;&#51116; CAN &#48260;&#49828; &#44163;&#44201;&#51012; AI&#44032; &#49892;&#49884;&#44036; &#48516;&#49437;&#54633;&#45768;&#45796;. &#53412;&#45716; &#48652;&#46972;&#50864;&#51800;&#51032; localStorage&#50640;&#47564; &#51200;&#51109;&#46418;&#47728; &#49436;&#48260;&#47196; &#51204;&#49569;&#46104;&#51648; &#50506;&#49845;&#45768;&#45796;.</div>
+      </div>
+      <div class="ai-footer-hint">&#9432; API &#53412;&#45716; &#48652;&#46972;&#50864;&#51800; localStorage&#50640; &#51200;&#51109;&#46428; &middot; &#49436;&#48260; &#51204;&#49569; &#50630;&#51020;</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── METRICS ── -->
+<div class="metrics">
+  <div class="metric"><div class="metric-label">Bus Load</div><div class="metric-val ok" id="m_busload">0%</div><div class="metric-sub">500 Kbps</div></div>
+  <div class="metric"><div class="metric-label">Frame Rate</div><div class="metric-val" id="m_fps">0</div><div class="metric-sub">frames/sec</div></div>
+  <div class="metric"><div class="metric-label">Total Frames</div><div class="metric-val" id="m_total">0</div><div class="metric-sub">since start</div></div>
+  <div class="metric"><div class="metric-label">Normal (R)</div><div class="metric-val ok" id="m_normal">0</div><div class="metric-sub">labeled R</div></div>
+  <div class="metric"><div class="metric-label">Attack (T)</div><div class="metric-val" id="m_attack">0</div><div class="metric-sub" id="m_atkpct">0% of traffic</div></div>
+  <div class="metric"><div class="metric-label">Anomalies</div><div class="metric-val" id="m_anom">0</div><div class="metric-sub">IDS triggered</div></div>
+  <div class="metric"><div class="metric-label">Unique IDs</div><div class="metric-val" id="m_ids">0</div><div class="metric-sub">arb IDs seen</div></div>
+  <div class="metric"><div class="metric-label">Speed</div><div class="metric-val" id="m_speed">—</div><div class="metric-sub">0x0316 km/h</div></div>
+</div>
+
+<!-- ── VEHICLE STATE + BUS CHART ── -->
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-head">
+      <span>Vehicle State — Decoded from CAN</span>
+      <span style="font-size:10px;font-weight:400;color:var(--text3)">실시간 디코딩</span>
+    </div>
+    <div class="veh-grid" id="vehGrid"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">
+      <span>ECU Node Status</span>
+      <span id="ecuAtkLabel" style="font-size:10px;color:var(--text3)"></span>
+    </div>
+    <div class="ecu-status" id="ecuStatus"></div>
+  </div>
+</div>
+
+<!-- ── BUS LOAD CHART ── -->
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head">
+    <span>Bus Load Timeline</span>
+    <div style="display:flex;gap:14px">
+      <span class="cl-item"><span class="cl-sq" style="background:#3fb950"></span> Normal</span>
+      <span class="cl-item"><span class="cl-sq" style="background:#f85149"></span> Flood attack</span>
+      <span class="cl-item"><span class="cl-sq" style="background:#bc8cff"></span> Spoof</span>
+      <span class="cl-item"><span class="cl-sq" style="background:#ffa657"></span> Fuzz</span>
+    </div>
+  </div>
+  <div class="chart-wrap" style="height:100px">
+    <canvas id="loadChart" role="img" aria-label="CAN bus load over time"></canvas>
+  </div>
+</div>
+
+<!-- ── MAIN GRID: FRAME TABLE + DIFF ── -->
+<div class="grid3">
+  <!-- CAN FRAME TABLE -->
+  <div class="panel">
+    <div class="panel-head">
+      <span>CAN Frame Stream — All Fields</span>
+      <span id="frameCount" style="font-size:10px;color:var(--text3)">0 frames</span>
+    </div>
+    <div class="frame-wrap">
+      <table class="frame-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Arb ID</th>
+            <th>DLC</th>
+            <th>B0</th><th>B1</th><th>B2</th><th>B3</th>
+            <th>B4</th><th>B5</th><th>B6</th><th>B7</th>
+            <th>Label</th>
+            <th>Decoded</th>
+          </tr>
+        </thead>
+        <tbody id="frameTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CAN DATA DIFF -->
+  <div class="panel">
+    <div class="panel-head"><span>CAN Data Diff</span><span style="font-size:10px;color:var(--text3)">before → after</span></div>
+    <div class="diff-head">
+      <span>Arb ID</span><span>ECU</span><span>Before</span><span>After</span><span>Δ</span>
+    </div>
+    <div id="diffBody"></div>
+  </div>
+</div>
+
+<!-- ── IDS LOG ── -->
+<div class="panel">
+  <div class="panel-head">
+    <span>IDS / Anomaly Detection Log</span>
+    <span id="idsCount" style="font-size:10px;color:var(--text3)">0 events</span>
+  </div>
+  <div class="ids-wrap" id="idsLog">
+    <div class="ids-row" style="color:var(--text3)">
+      <span class="ids-ts">—</span>
+      <span class="ids-tag tag-sys">[SYS]</span>
+      <span class="ids-msg">시뮬레이터 대기 중 — Start를 눌러 시작하세요</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<footer>
+  Hyundai Sonata CAN Bus Security Simulator &nbsp;|&nbsp;
+  Dataset: <span>OTIDS (Open CAN IDS Dataset) — Flooding Attack</span> &nbsp;|&nbsp;
+  Spoofing & Fuzzing: <span>Simulated</span> &nbsp;|&nbsp;
+  Educational / Research Use Only
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js">
+/* ══════════════════════════════════════
+   VISUAL SIMULATOR — Gauges, Canvas, AI
+   ══════════════════════════════════════ */
+
+function vsDescribeArc(cx, cy, r, startAngle, endAngle) {
+  const toRad = a => (a - 90) * Math.PI / 180;
+  const x1 = cx + r * Math.cos(toRad(startAngle));
+  const y1 = cy + r * Math.sin(toRad(startAngle));
+  const x2 = cx + r * Math.cos(toRad(endAngle));
+  const y2 = cy + r * Math.sin(toRad(endAngle));
+  const span = ((endAngle - startAngle) % 360 + 360) % 360;
+  if (span < 0.2) return null;
+  const la = span > 180 ? 1 : 0;
+  return `M ${x1.toFixed(2)},${y1.toFixed(2)} A ${r},${r} 0 ${la},1 ${x2.toFixed(2)},${y2.toFixed(2)}`;
+}
+
+const VS = {
+  spd: { cx:110, cy:95, r:74, min:0, max:260, startAngle:225, span:270, greens:100, yellows:150 },
+  rpm: { cx:90,  cy:78, r:60, min:0, max:8000, startAngle:225, span:270, greens:4000, yellows:6000 }
+};
+function vsValToAngle(cfg, val) {
+  return cfg.startAngle + (Math.min(Math.max(val, cfg.min), cfg.max) / cfg.max) * cfg.span;
+}
+
+function vsInitGauges() {
+  const setD = (id, d) => { if(d) { const el=document.getElementById(id); if(el) el.setAttribute('d', d); } };
+  const s = VS.spd;
+  const sGreenEnd = vsValToAngle(s, s.greens);
+  const sYellowEnd = vsValToAngle(s, s.yellows);
+  const sRedEnd = s.startAngle + s.span;
+  setD('spdZoneGreen',  vsDescribeArc(s.cx, s.cy, s.r, s.startAngle, sGreenEnd));
+  setD('spdZoneYellow', vsDescribeArc(s.cx, s.cy, s.r, sGreenEnd, sYellowEnd));
+  setD('spdZoneRed',    vsDescribeArc(s.cx, s.cy, s.r, sYellowEnd, sRedEnd));
+
+  const rp = VS.rpm;
+  const rGreenEnd = vsValToAngle(rp, rp.greens);
+  const rYellowEnd = vsValToAngle(rp, rp.yellows);
+  const rRedEnd = rp.startAngle + rp.span;
+  const toRad = a => (a-90)*Math.PI/180;
+  const rBgD = `M ${(rp.cx+rp.r*Math.cos(toRad(rp.startAngle))).toFixed(2)},${(rp.cy+rp.r*Math.sin(toRad(rp.startAngle))).toFixed(2)} A ${rp.r},${rp.r} 0 1,1 ${(rp.cx+rp.r*Math.cos(toRad(rRedEnd))).toFixed(2)},${(rp.cy+rp.r*Math.sin(toRad(rRedEnd))).toFixed(2)}`;
+  setD('rpmBgArc',      rBgD);
+  setD('rpmZoneGreen',  vsDescribeArc(rp.cx, rp.cy, rp.r, rp.startAngle, rGreenEnd));
+  setD('rpmZoneYellow', vsDescribeArc(rp.cx, rp.cy, rp.r, rGreenEnd, rYellowEnd));
+  setD('rpmZoneRed',    vsDescribeArc(rp.cx, rp.cy, rp.r, rYellowEnd, rRedEnd));
+
+  // Speed ticks
+  const sTicksEl = document.getElementById('spdTicks');
+  if(sTicksEl) {
+    const majorSpeeds = [0,40,80,120,160,200,260];
+    let html = '';
+    for(let kmh=0; kmh<=260; kmh+=20) {
+      const a = vsValToAngle(s, kmh);
+      const rad = (a-90)*Math.PI/180;
+      const isMajor = majorSpeeds.includes(kmh);
+      const innerR = isMajor ? 52 : 58;
+      const outerR = isMajor ? 64 : 62;
+      const x1=s.cx+innerR*Math.cos(rad), y1=s.cy+innerR*Math.sin(rad);
+      const x2=s.cx+outerR*Math.cos(rad), y2=s.cy+outerR*Math.sin(rad);
+      html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${isMajor?'#8b949e':'#444c56'}" stroke-width="${isMajor?1.5:1}"/>`;
+      if(isMajor) {
+        const lx=s.cx+44*Math.cos(rad), ly=s.cy+44*Math.sin(rad);
+        html += `<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="middle" fill="#6e7681" font-size="8" font-family="sans-serif">${kmh}</text>`;
+      }
+    }
+    sTicksEl.innerHTML = html;
+  }
+
+  // RPM ticks
+  const rTicksEl = document.getElementById('rpmTicks');
+  if(rTicksEl) {
+    let html = '';
+    for(let rpm=0; rpm<=8000; rpm+=1000) {
+      const a = vsValToAngle(rp, rpm);
+      const rad = (a-90)*Math.PI/180;
+      const x1=rp.cx+42*Math.cos(rad), y1=rp.cy+42*Math.sin(rad);
+      const x2=rp.cx+52*Math.cos(rad), y2=rp.cy+52*Math.sin(rad);
+      html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#8b949e" stroke-width="1.5"/>`;
+      const lx=rp.cx+35*Math.cos(rad), ly=rp.cy+35*Math.sin(rad);
+      html += `<text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" text-anchor="middle" fill="#6e7681" font-size="8" font-family="sans-serif">${rpm/1000}</text>`;
+    }
+    rTicksEl.innerHTML = html;
+  }
+}
+
+function vsUpdateSpeed(speed) {
+  vs_currentSpeed = speed;
+  const cfg = VS.spd;
+  const angle = vsValToAngle(cfg, speed);
+  const needleEl = document.getElementById('spdNeedleG');
+  if(needleEl) needleEl.setAttribute('transform', `rotate(${angle.toFixed(2)},${cfg.cx},${cfg.cy})`);
+  const fillEl = document.getElementById('spdActiveFill');
+  if(fillEl) {
+    const d = vsDescribeArc(cfg.cx, cfg.cy, cfg.r, cfg.startAngle, angle);
+    if(d) { fillEl.setAttribute('d', d); fillEl.style.display=''; }
+    else { fillEl.style.display='none'; }
+    const c = speed>=180?'#f85149':speed>=130?'#d29922':'#3fb950';
+    fillEl.setAttribute('stroke', c);
+  }
+  const spdText = document.getElementById('spdText');
+  if(spdText) {
+    spdText.textContent = Math.round(speed);
+    spdText.setAttribute('fill', speed>=180?'#f85149':speed>=130?'#d29922':'#3fb950');
+  }
+}
+
+function vsUpdateRpm(rpm) {
+  const cfg = VS.rpm;
+  const angle = vsValToAngle(cfg, rpm);
+  const needleEl = document.getElementById('rpmNeedleG');
+  if(needleEl) needleEl.setAttribute('transform', `rotate(${angle.toFixed(2)},${cfg.cx},${cfg.cy})`);
+  const fillEl = document.getElementById('rpmActiveFill');
+  if(fillEl) {
+    const d = vsDescribeArc(cfg.cx, cfg.cy, cfg.r, cfg.startAngle, angle);
+    if(d) { fillEl.setAttribute('d', d); fillEl.style.display=''; }
+    else { fillEl.style.display='none'; }
+    const c = rpm>=6000?'#f85149':rpm>=4000?'#d29922':'#3fb950';
+    fillEl.setAttribute('stroke', c);
+  }
+  const rpmText = document.getElementById('rpmText');
+  if(rpmText) {
+    rpmText.textContent = (rpm/1000).toFixed(1);
+    rpmText.setAttribute('fill', rpm>=6000?'#f85149':rpm>=4000?'#d29922':'#3fb950');
+  }
+}
+
+function vsUpdateGauges(frame) {
+  if(frame.id !== '0316') return;
+  const speed = ((frame.data[1]<<8)|frame.data[2]) * 0.01;
+  vs_currentSpeed = speed;
+  vsUpdateSpeed(speed);
+  let rpm;
+  if(vs_currentMode==='flood') rpm = Math.random()*8000;
+  else if(vs_currentMode==='spoof') rpm = 3000+speed*25+(Math.random()-0.5)*300;
+  else if(vs_currentMode==='fuzz') rpm = speed*28+(Math.random()-0.5)*3000;
+  else rpm = speed*28+(Math.random()-0.5)*200;
+  rpm = Math.max(0, Math.min(8000, rpm));
+  vsUpdateRpm(rpm);
+  const gear = speed<5?'N':speed<30?'2':speed<60?'3':speed<100?'4':speed<150?'5':'6';
+  const thrVal = frame.data[4]||0;
+  const steerVal = (((frame.data[4]<<8)|frame.data[5])*0.01).toFixed(0);
+  const gEl=document.getElementById('vs_gear'), tEl=document.getElementById('vs_thr'), sEl=document.getElementById('vs_steer');
+  if(gEl) gEl.textContent=gear;
+  if(tEl) tEl.textContent=thrVal+'%';
+  if(sEl) sEl.textContent=steerVal+'°';
+  const isAtk = vs_currentMode!=='none';
+  [gEl,tEl,sEl].forEach(el=>{ if(el) { isAtk?el.classList.add('atk-val'):el.classList.remove('atk-val'); } });
+}
+
+function vsUpdateMode(mode) {
+  ['wl_ok','wl_abs','wl_eng','wl_str','wl_spd','wl_bus','wl_ids'].forEach(id=>{
+    const el=document.getElementById(id); if(el){el.classList.remove('on','pulse');}
+  });
+  const on=(id,pulse=false)=>{const el=document.getElementById(id);if(!el)return;el.classList.add('on');if(pulse)el.classList.add('pulse');};
+  const carTxt=document.getElementById('carStateTxt');
+  const spdCmp=document.getElementById('spdCompare');
+  if(mode==='none'){
+    on('wl_ok');
+    if(carTxt){carTxt.textContent='NORMAL';carTxt.style.color='#3fb950';}
+    if(spdCmp)spdCmp.classList.remove('show');
+  } else if(mode==='flood'){
+    on('wl_abs',true);on('wl_eng',true);on('wl_str',true);on('wl_bus',true);on('wl_ids',true);
+    if(carTxt){carTxt.textContent='⚡ FLOODING ATTACK';carTxt.style.color='#f85149';}
+    if(spdCmp)spdCmp.classList.remove('show');
+  } else if(mode==='spoof'){
+    on('wl_spd',true);on('wl_ids',true);
+    if(carTxt){carTxt.textContent='SPOOFING ACTIVE';carTxt.style.color='#bc8cff';}
+    if(spdCmp)spdCmp.classList.add('show');
+  } else if(mode==='fuzz'){
+    on('wl_eng',true);on('wl_str',true);on('wl_ids',true);
+    if(carTxt){carTxt.textContent='FUZZING ACTIVE';carTxt.style.color='#ffa657';}
+    if(spdCmp)spdCmp.classList.remove('show');
+  }
+}
+
+/* ── Canvas ── */
+let vs_rAF, vs_carCanvas, vs_carCtx, vs_currentMode='none', vs_currentSpeed=0, vs_running=false;
+
+function vsInitCanvas(){
+  vs_carCanvas=document.getElementById('carCanvas');
+  vs_carCtx=vs_carCanvas.getContext('2d');
+  vs_rAF=requestAnimationFrame(vsDrawLoop);
+}
+
+function vsDrawLoop(ts){
+  vsDrawCarScene(vs_carCtx,vs_carCanvas.width,vs_carCanvas.height,vs_currentMode,vs_currentSpeed,ts);
+  vs_rAF=requestAnimationFrame(vsDrawLoop);
+}
+
+function vsDrawCarScene(ctx,W,H,mode,speed,ts){
+  ctx.clearRect(0,0,W,H);
+  vsDrawRoad(ctx,W,H,speed,ts);
+  vsDrawCar(ctx,W/2,H/2+10,'#2563eb');
+  if(mode==='flood') vsDrawFloodEffect(ctx,W,H,ts);
+  else if(mode==='spoof') vsDrawSpoofEffect(ctx,W,H,speed,ts);
+  else if(mode==='fuzz') vsDrawFuzzEffect(ctx,W,H,ts);
+}
+
+function vsDrawRoad(ctx,W,H,speed,ts){
+  ctx.fillStyle='#0d1117'; ctx.fillRect(0,0,W,H);
+  const rW=200,rX=(W-rW)/2;
+  ctx.fillStyle='#161b22'; ctx.fillRect(rX,0,rW,H);
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=2; ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(rX,0);ctx.lineTo(rX,H);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(rX+rW,0);ctx.lineTo(rX+rW,H);ctx.stroke();
+  const dashSpd=Math.max(speed,15);
+  const offset=-((ts*dashSpd/180)%60);
+  ctx.strokeStyle='rgba(255,255,255,0.1)';ctx.lineWidth=2;
+  ctx.setLineDash([35,25]);ctx.lineDashOffset=offset;
+  ctx.beginPath();ctx.moveTo(W/2,0);ctx.lineTo(W/2,H);ctx.stroke();
+  ctx.setLineDash([]);
+  if(speed>80){
+    const alpha=Math.min((speed-80)/180,0.6);
+    for(let i=0;i<6;i++){
+      const sx=rX+10+Math.random()*(rW-20),sy=Math.random()*H,len=20+Math.random()*40;
+      ctx.strokeStyle=`rgba(88,166,255,${alpha*Math.random()})`;
+      ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx,sy+len);ctx.stroke();
+    }
+  }
+}
+
+function vsDrawCar(ctx,cx,cy,color){
+  const CW=46,CH=88;
+  ctx.save();
+  ctx.shadowColor='rgba(0,0,0,0.8)';ctx.shadowBlur=10;ctx.shadowOffsetX=3;ctx.shadowOffsetY=4;
+  ctx.fillStyle=color;
+  ctx.beginPath();
+  const r=10,x=cx-CW/2,y=cy-CH/2;
+  if(ctx.roundRect){ctx.roundRect(x,y,CW,CH,r);}
+  else{ctx.moveTo(x+r,y);ctx.lineTo(x+CW-r,y);ctx.quadraticCurveTo(x+CW,y,x+CW,y+r);ctx.lineTo(x+CW,y+CH-r);ctx.quadraticCurveTo(x+CW,y+CH,x+CW-r,y+CH);ctx.lineTo(x+r,y+CH);ctx.quadraticCurveTo(x,y+CH,x,y+CH-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);}
+  ctx.fill();
+  ctx.shadowColor='transparent';ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(150,200,255,0.22)';
+  ctx.beginPath();ctx.ellipse(cx,cy-CH/2+18,16,10,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(cx,cy+CH/2-16,13,8,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,0.12)';
+  ctx.beginPath();ctx.ellipse(cx,cy,14,22,0,0,Math.PI*2);ctx.fill();
+  const wheels=[[cx-CW/2-2,cy-CH/2+14],[cx+CW/2+2,cy-CH/2+14],[cx-CW/2-2,cy+CH/2-14],[cx+CW/2+2,cy+CH/2-14]];
+  wheels.forEach(([wx,wy])=>{
+    ctx.fillStyle='#1a1f24';ctx.strokeStyle='#444c56';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.ellipse(wx,wy,7,11,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+  });
+  ctx.fillStyle='rgba(255,230,100,0.9)';ctx.shadowColor='rgba(255,220,0,0.8)';ctx.shadowBlur=8;
+  [[cx-12,cy-CH/2+6],[cx+12,cy-CH/2+6]].forEach(([hx,hy])=>{ctx.beginPath();ctx.ellipse(hx,hy,6,4,0,0,Math.PI*2);ctx.fill();});
+  ctx.shadowColor='transparent';ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(220,50,50,0.9)';
+  [[cx-12,cy+CH/2-6],[cx+12,cy+CH/2-6]].forEach(([tx,ty])=>{ctx.beginPath();ctx.ellipse(tx,ty,6,4,0,0,Math.PI*2);ctx.fill();});
+  ctx.restore();
+}
+
+function vsDrawFloodEffect(ctx,W,H,ts){
+  for(let i=0;i<60;i++){
+    ctx.fillStyle=`rgba(248,81,73,${0.3+Math.random()*0.5})`;
+    ctx.fillRect(Math.random()*W,Math.random()*H,2,2);
+  }
+  const scanY=(ts/8)%H;
+  const sg=ctx.createLinearGradient(0,scanY-20,0,scanY+20);
+  sg.addColorStop(0,'rgba(248,81,73,0)');sg.addColorStop(0.5,'rgba(248,81,73,0.18)');sg.addColorStop(1,'rgba(248,81,73,0)');
+  ctx.fillStyle=sg;ctx.fillRect(0,scanY-20,W,40);
+  if(Math.floor(ts/400)%2===0){ctx.strokeStyle='rgba(248,81,73,0.6)';ctx.lineWidth=3;ctx.strokeRect(2,2,W-4,H-4);}
+  ctx.fillStyle=`rgba(248,81,73,${0.08+Math.sin(ts*0.006)*0.05})`;ctx.fillRect(0,0,W,H);
+}
+
+function vsDrawSpoofEffect(ctx,W,H,speed,ts){
+  const ghostAlpha=0.2+0.1*Math.sin(ts*0.004);
+  ctx.globalAlpha=ghostAlpha;
+  vsDrawCar(ctx,W/2,H/2-75,'#f85149');
+  ctx.globalAlpha=1;
+  ctx.save();
+  ctx.strokeStyle='rgba(188,140,255,0.6)';ctx.lineWidth=2;
+  ctx.setLineDash([8,6]);ctx.lineDashOffset=-(ts*0.05)%14;
+  ctx.beginPath();ctx.moveTo(W/2,H/2-44);ctx.lineTo(W/2,H/2-75+44);ctx.stroke();
+  ctx.setLineDash([]);ctx.restore();
+  ctx.fillStyle=`rgba(210,153,34,${0.04+0.03*Math.abs(Math.sin(ts*0.003))})`;ctx.fillRect(0,0,W,H);
+  const spoofedSpeed=200+Math.floor(Math.random()*30);
+  const realSpeed=Math.max(0,speed);
+  const el1=document.getElementById('spdCmpSpoof'),el2=document.getElementById('spdCmpReal');
+  const bar1=document.getElementById('spdCmpSpoofBar'),bar2=document.getElementById('spdCmpRealBar');
+  if(el1)el1.textContent=spoofedSpeed+' km/h';
+  if(el2)el2.textContent=realSpeed.toFixed(0)+' km/h';
+  if(bar1)bar1.style.width=Math.min(100,spoofedSpeed/2.6)+'%';
+  if(bar2)bar2.style.width=Math.min(100,realSpeed/2.6)+'%';
+}
+
+function vsDrawFuzzEffect(ctx,W,H,ts){
+  if(Math.random()<0.3){
+    const n=2+Math.floor(Math.random()*4);
+    for(let i=0;i<n;i++){
+      const sy=Math.random()*H,sh=4+Math.random()*20,shift=(Math.random()-0.5)*30;
+      try{const d=ctx.getImageData(0,sy,W,sh);ctx.putImageData(d,shift,sy);}catch(e){}
+      ctx.fillStyle=`rgba(${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},0.08)`;
+      ctx.fillRect(0,sy,W,sh);
+    }
+  }
+  for(let i=0;i<30;i++){
+    const r=Math.floor(Math.random()*255),g=Math.floor(Math.random()*255),b=Math.floor(Math.random()*255);
+    ctx.fillStyle=`rgba(${r},${g},${b},0.4)`;
+    ctx.fillRect(Math.random()*W,Math.random()*H,3+Math.random()*5,3+Math.random()*3);
+  }
+  ctx.fillStyle=`rgba(255,166,87,${0.06+Math.abs(Math.sin(ts*0.005))*0.07})`;ctx.fillRect(0,0,W,H);
+}
+
+/* ── AI Analysis ── */
+function onApiKeyChange(){
+  const key=document.getElementById('aiKeyInput').value.trim();
+  if(key)localStorage.setItem('vs_oai_key',key);
+  const btn=document.getElementById('aiAnalyzeBtn');
+  if(btn)btn.disabled=!key;
+}
+
+function toggleKeyVis(){
+  const inp=document.getElementById('aiKeyInput');
+  if(inp)inp.type=inp.type==='password'?'text':'password';
+}
+
+function addAIBubble(text,type='ai'){
+  const area=document.getElementById('aiResponseArea');
+  if(!area)return null;
+  const div=document.createElement('div');
+  div.className='ai-bubble '+type;
+  div.textContent=text;
+  area.appendChild(div);
+  area.scrollTop=area.scrollHeight;
+  return div;
+}
+
+function clearAiHistory(){
+  const area=document.getElementById('aiResponseArea');
+  if(!area)return;
+  area.innerHTML='';
+  addAIBubble('\u{1F511} 기록이 지워졌습니다. API 키를 입력하고 Analyze를 눌러 분석을 시작하세요.','sys');
+}
+
+async function analyzeWithAI(){
+  const key=document.getElementById('aiKeyInput').value.trim();
+  if(!key)return;
+  const model=document.getElementById('aiModel').value;
+  const lang=document.getElementById('aiLang').value;
+  const btn=document.getElementById('aiAnalyzeBtn');
+  if(btn){btn.disabled=true;btn.classList.add('loading');btn.textContent='⏳ Analyzing...';}
+  const area=document.getElementById('aiResponseArea');
+  const typingRow=document.createElement('div');
+  typingRow.className='ai-typing-row';
+  typingRow.innerHTML='<div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div>';
+  if(area){area.appendChild(typingRow);area.scrollTop=area.scrollHeight;}
+  const modeNames={none:'Normal (no attack)',flood:'DoS Flooding Attack',spoof:'Speed Spoofing Attack',fuzz:'Data Fuzzing Attack'};
+  const busLoad=document.getElementById('m_busload').textContent;
+  const fps=document.getElementById('m_fps').textContent;
+  const anomalies=document.getElementById('m_anom').textContent;
+  const speedVal=document.getElementById('m_speed').textContent;
+  const totalFrames=document.getElementById('m_total').textContent;
+  const attackFrames=document.getElementById('m_attack').textContent;
+  const langInstr=lang==='ko'?'반드시 한국어로 답변하세요.':'Reply in English.';
+  const prompt=`You are a CAN bus cybersecurity expert analyzing a Hyundai Sonata vehicle network attack simulation.\n\nCurrent state:\n- Attack mode: ${modeNames[vs_currentMode]||vs_currentMode}\n- Bus load: ${busLoad}\n- Frame rate: ${fps} frames/sec\n- Total frames: ${totalFrames}\n- Attack frames: ${attackFrames}\n- IDS anomalies detected: ${anomalies}\n- Vehicle speed (from 0x0316): ${speedVal} km/h\n\nProvide a concise technical analysis (3-5 sentences) covering:\n1. What this attack does to the CAN bus\n2. Observed metrics and what they indicate\n3. Potential real-world vehicle safety impact\n4. One recommended IDS countermeasure\n\n${langInstr}`;
+  try{
+    const resp=await fetch('https://api.openai.com/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:model,messages:[{role:'user',content:prompt}],max_tokens:400,temperature:0.7})
+    });
+    const data=await resp.json();
+    if(typingRow.parentNode)typingRow.remove();
+    if(data.error){addAIBubble('Error: '+data.error.message,'err');}
+    else{addAIBubble(data.choices[0].message.content,'ai');}
+  }catch(e){
+    if(typingRow.parentNode)typingRow.remove();
+    addAIBubble('Network error: '+e.message,'err');
+  }
+  if(btn){btn.disabled=false;btn.classList.remove('loading');btn.innerHTML='\u{1F50D} Analyze Current Attack with AI';}
+}
+
+function vsInit(){
+  vsInitGauges();
+  vsInitCanvas();
+  vsUpdateSpeed(0);
+  vsUpdateRpm(0);
+  vsUpdateMode('none');
+  const savedKey=localStorage.getItem('vs_oai_key');
+  if(savedKey){
+    const inp=document.getElementById('aiKeyInput');
+    const btn=document.getElementById('aiAnalyzeBtn');
+    if(inp)inp.value=savedKey;
+    if(btn)btn.disabled=false;
+  }
+}
+
+</script>
+<script>
+/* ══════════════════════════════════════
+   EMBEDDED SONATA CAN DATA
+   Format: {ts, id, dlc, data[0..7], label}
+   R = Normal, T = Flooding attack
+   ══════════════════════════════════════ */
+const SONATA_DATA={"normal":[{"ts":0.746,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":0.966,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":1.187,"id":"043F","dlc":8,"data":[16,64,96,255,90,122,8,0],"label":"R"},{"ts":1.407,"id":"0140","dlc":8,"data":[0,0,0,0,14,35,45,164],"label":"R"},{"ts":1.633,"id":"0316","dlc":8,"data":[69,38,188,9,38,36,0,124],"label":"R"},{"ts":1.853,"id":"0316","dlc":8,"data":[69,37,188,9,37,36,0,124],"label":"R"},{"ts":2.073,"id":"0260","dlc":8,"data":[27,37,38,48,0,144,117,13],"label":"R"},{"ts":2.294,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":2.516,"id":"01F1","dlc":8,"data":[8,0,0,0,0,0,0,0],"label":"R"},{"ts":2.737,"id":"043F","dlc":8,"data":[16,64,96,255,90,118,8,0],"label":"R"},{"ts":2.957,"id":"0002","dlc":8,"data":[0,0,0,0,0,8,8,184],"label":"R"},{"ts":3.178,"id":"0440","dlc":8,"data":[255,0,0,0,255,145,8,0],"label":"R"},{"ts":3.399,"id":"04F0","dlc":8,"data":[0,0,0,128,0,21,23,20],"label":"R"},{"ts":3.622,"id":"0260","dlc":8,"data":[27,37,38,48,0,144,119,62],"label":"R"},{"ts":3.842,"id":"0329","dlc":8,"data":[64,176,127,20,17,32,0,20],"label":"R"},{"ts":4.062,"id":"0329","dlc":8,"data":[12,177,127,20,17,32,0,20],"label":"R"},{"ts":4.286,"id":"0002","dlc":8,"data":[0,0,0,0,0,1,13,199],"label":"R"},{"ts":4.507,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":4.728,"id":"0350","dlc":8,"data":[54,43,196,108,116,0,0,193],"label":"R"},{"ts":4.948,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":5.17,"id":"0316","dlc":8,"data":[69,38,176,9,38,36,0,124],"label":"R"},{"ts":5.391,"id":"0329","dlc":8,"data":[12,176,127,20,17,32,0,20],"label":"R"},{"ts":5.615,"id":"02B0","dlc":5,"data":[255,127,0,5,28],"label":"R"},{"ts":5.836,"id":"00A0","dlc":8,"data":[96,124,172,9,0,32,2,0],"label":"R"},{"ts":6.056,"id":"04B1","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"R"},{"ts":6.277,"id":"0002","dlc":8,"data":[0,0,0,0,0,3,4,170],"label":"R"},{"ts":6.498,"id":"0131","dlc":8,"data":[9,128,0,0,190,127,10,158],"label":"R"},{"ts":6.719,"id":"04F0","dlc":8,"data":[0,0,0,128,0,21,23,20],"label":"R"},{"ts":6.939,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":7.159,"id":"02A0","dlc":8,"data":[32,0,110,29,204,4,227,0],"label":"R"},{"ts":7.38,"id":"0545","dlc":8,"data":[216,0,0,141,0,0,0,0],"label":"R"},{"ts":7.606,"id":"0002","dlc":8,"data":[0,0,0,0,0,8,9,165],"label":"R"},{"ts":7.827,"id":"0131","dlc":8,"data":[9,128,0,0,220,127,15,164],"label":"R"},{"ts":8.047,"id":"0131","dlc":8,"data":[9,128,0,0,204,127,5,110],"label":"R"},{"ts":8.267,"id":"02B0","dlc":5,"data":[255,127,0,5,133],"label":"R"},{"ts":8.488,"id":"0316","dlc":8,"data":[69,38,180,9,38,36,0,124],"label":"R"},{"ts":8.709,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":8.93,"id":"0545","dlc":8,"data":[216,0,0,142,0,0,0,0],"label":"R"},{"ts":9.151,"id":"05F0","dlc":2,"data":[0,0],"label":"R"},{"ts":9.376,"id":"01F1","dlc":8,"data":[8,0,0,0,0,0,0,0],"label":"R"},{"ts":9.597,"id":"0260","dlc":8,"data":[28,37,37,48,0,144,115,16],"label":"R"},{"ts":9.818,"id":"0329","dlc":8,"data":[12,176,127,20,17,32,0,20],"label":"R"},{"ts":10.038,"id":"0260","dlc":8,"data":[28,38,38,48,0,144,117,28],"label":"R"},{"ts":10.258,"id":"0131","dlc":8,"data":[0,128,0,0,168,127,2,228],"label":"R"},{"ts":10.479,"id":"02B0","dlc":5,"data":[255,127,0,5,242],"label":"R"},{"ts":10.7,"id":"0140","dlc":8,"data":[0,0,0,0,8,37,46,51],"label":"R"},{"ts":10.924,"id":"0350","dlc":8,"data":[54,43,132,108,116,0,0,129],"label":"R"},{"ts":11.145,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":11.366,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"},{"ts":11.586,"id":"0545","dlc":8,"data":[216,0,0,142,0,0,0,0],"label":"R"},{"ts":11.807,"id":"0131","dlc":8,"data":[18,128,0,0,183,127,13,194],"label":"R"},{"ts":12.027,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":12.248,"id":"0545","dlc":8,"data":[216,0,0,140,0,0,0,0],"label":"R"},{"ts":12.473,"id":"0350","dlc":8,"data":[54,43,52,108,116,0,0,49],"label":"R"},{"ts":12.694,"id":"02A0","dlc":8,"data":[96,0,110,29,204,4,227,0],"label":"R"},{"ts":12.915,"id":"0329","dlc":8,"data":[220,177,127,20,17,32,0,20],"label":"R"},{"ts":13.135,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":13.356,"id":"04B1","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"R"},{"ts":13.577,"id":"0130","dlc":8,"data":[19,128,0,255,249,127,14,119],"label":"R"},{"ts":13.798,"id":"043F","dlc":8,"data":[16,64,96,255,90,143,8,0],"label":"R"},{"ts":14.018,"id":"0440","dlc":8,"data":[255,0,0,0,255,138,8,0],"label":"R"},{"ts":14.242,"id":"02B0","dlc":5,"data":[255,127,0,5,122],"label":"R"},{"ts":14.462,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":14.683,"id":"0350","dlc":8,"data":[54,43,4,108,115,0,0,6],"label":"R"},{"ts":14.904,"id":"05A0","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"R"},{"ts":15.126,"id":"0130","dlc":8,"data":[5,128,0,255,38,128,9,49],"label":"R"},{"ts":15.346,"id":"0140","dlc":8,"data":[0,0,0,0,18,37,47,57],"label":"R"},{"ts":15.567,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":15.792,"id":"0260","dlc":8,"data":[28,38,38,48,0,144,117,28],"label":"R"},{"ts":16.012,"id":"02A0","dlc":8,"data":[96,0,110,29,204,4,227,0],"label":"R"},{"ts":16.232,"id":"0350","dlc":8,"data":[54,43,180,108,116,0,0,177],"label":"R"},{"ts":16.452,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":16.676,"id":"01F1","dlc":8,"data":[8,0,0,0,0,0,0,0],"label":"R"},{"ts":16.897,"id":"0131","dlc":8,"data":[247,127,0,0,197,127,10,247],"label":"R"},{"ts":17.117,"id":"0140","dlc":8,"data":[0,0,0,0,4,34,32,102],"label":"R"},{"ts":17.338,"id":"043F","dlc":8,"data":[16,64,96,255,90,137,8,0],"label":"R"},{"ts":17.558,"id":"04F0","dlc":8,"data":[0,0,0,128,0,21,23,20],"label":"R"},{"ts":17.78,"id":"02A0","dlc":8,"data":[0,0,110,29,204,4,227,0],"label":"R"},{"ts":18.001,"id":"0545","dlc":8,"data":[216,0,0,140,0,0,0,0],"label":"R"},{"ts":18.225,"id":"02B0","dlc":5,"data":[255,127,0,5,88],"label":"R"},{"ts":18.445,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"},{"ts":18.666,"id":"0131","dlc":8,"data":[251,127,0,0,209,127,11,79],"label":"R"},{"ts":18.888,"id":"0440","dlc":8,"data":[255,0,0,0,255,139,8,0],"label":"R"},{"ts":19.108,"id":"0316","dlc":8,"data":[69,38,168,9,38,36,0,124],"label":"R"},{"ts":19.329,"id":"0260","dlc":8,"data":[28,37,38,48,0,144,115,49],"label":"R"},{"ts":19.549,"id":"0545","dlc":8,"data":[216,0,0,140,0,0,0,0],"label":"R"},{"ts":19.775,"id":"0430","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"R"},{"ts":19.995,"id":"01F1","dlc":8,"data":[8,0,0,0,0,0,0,0],"label":"R"},{"ts":20.216,"id":"02B0","dlc":5,"data":[255,127,0,5,47],"label":"R"},{"ts":20.437,"id":"0131","dlc":8,"data":[0,128,0,0,171,127,12,206],"label":"R"},{"ts":20.657,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":20.88,"id":"0316","dlc":8,"data":[69,37,184,9,37,36,0,124],"label":"R"},{"ts":21.101,"id":"0350","dlc":8,"data":[54,43,36,108,116,0,0,33],"label":"R"},{"ts":21.322,"id":"0440","dlc":8,"data":[255,0,0,0,255,134,8,0],"label":"R"},{"ts":21.543,"id":"0545","dlc":8,"data":[216,90,0,141,0,0,0,0],"label":"R"},{"ts":21.765,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"},{"ts":21.986,"id":"0131","dlc":8,"data":[242,127,0,0,190,127,7,138],"label":"R"},{"ts":22.207,"id":"0260","dlc":8,"data":[27,38,38,48,0,144,121,59],"label":"R"},{"ts":22.428,"id":"02B0","dlc":5,"data":[255,127,0,5,28],"label":"R"},{"ts":22.65,"id":"0350","dlc":8,"data":[54,43,212,108,116,0,0,209],"label":"R"},{"ts":22.87,"id":"043F","dlc":8,"data":[16,64,96,255,90,152,8,0],"label":"R"},{"ts":23.091,"id":"0545","dlc":8,"data":[216,92,0,143,0,0,0,0],"label":"R"},{"ts":23.315,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":23.536,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":23.757,"id":"0430","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"R"},{"ts":23.977,"id":"01F1","dlc":8,"data":[8,0,0,0,0,0,0,0],"label":"R"},{"ts":24.199,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":24.42,"id":"02B0","dlc":5,"data":[255,127,0,5,227],"label":"R"},{"ts":24.641,"id":"043F","dlc":8,"data":[16,64,96,255,90,132,8,0],"label":"R"},{"ts":24.862,"id":"04F0","dlc":8,"data":[0,0,0,128,0,21,23,20],"label":"R"},{"ts":25.083,"id":"02A0","dlc":8,"data":[96,0,110,29,204,4,227,0],"label":"R"},{"ts":25.305,"id":"0002","dlc":8,"data":[0,0,0,0,0,0,3,45],"label":"R"},{"ts":25.525,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"},{"ts":25.746,"id":"0131","dlc":8,"data":[0,128,0,0,188,127,15,123],"label":"R"},{"ts":25.966,"id":"0130","dlc":8,"data":[15,128,0,255,9,128,5,115],"label":"R"},{"ts":26.187,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":26.411,"id":"02B0","dlc":5,"data":[255,127,0,5,122],"label":"R"},{"ts":26.632,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":26.853,"id":"02A0","dlc":8,"data":[0,0,110,29,204,4,227,0],"label":"R"},{"ts":27.073,"id":"0329","dlc":8,"data":[12,177,127,20,17,32,0,20],"label":"R"},{"ts":27.295,"id":"01F1","dlc":8,"data":[8,0,0,0,0,0,0,0],"label":"R"},{"ts":27.516,"id":"0130","dlc":8,"data":[6,128,0,255,12,128,0,28],"label":"R"},{"ts":27.737,"id":"0131","dlc":8,"data":[224,127,0,0,196,127,6,211],"label":"R"},{"ts":27.957,"id":"0131","dlc":8,"data":[242,127,0,0,179,127,12,192],"label":"R"},{"ts":28.178,"id":"043F","dlc":8,"data":[16,64,96,255,90,130,8,0],"label":"R"},{"ts":28.402,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":28.621,"id":"02A0","dlc":8,"data":[32,0,110,29,204,4,227,0],"label":"R"},{"ts":28.843,"id":"02B0","dlc":5,"data":[255,127,0,5,13],"label":"R"},{"ts":29.063,"id":"02B0","dlc":5,"data":[255,127,0,5,227],"label":"R"},{"ts":29.286,"id":"0131","dlc":8,"data":[242,127,0,0,188,127,1,199],"label":"R"},{"ts":29.507,"id":"043F","dlc":8,"data":[16,64,96,255,90,150,8,0],"label":"R"},{"ts":29.728,"id":"0440","dlc":8,"data":[255,0,0,0,255,138,8,0],"label":"R"},{"ts":29.949,"id":"0316","dlc":8,"data":[69,38,180,9,38,36,0,124],"label":"R"},{"ts":30.17,"id":"02A0","dlc":8,"data":[0,0,110,29,204,4,227,0],"label":"R"},{"ts":30.394,"id":"02B0","dlc":5,"data":[255,127,0,5,88],"label":"R"},{"ts":30.615,"id":"01F1","dlc":8,"data":[8,0,0,0,0,0,0,0],"label":"R"},{"ts":30.836,"id":"0002","dlc":8,"data":[0,0,0,0,0,0,12,150],"label":"R"},{"ts":31.056,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"},{"ts":31.278,"id":"0140","dlc":8,"data":[0,0,0,0,4,41,40,0],"label":"R"},{"ts":31.5,"id":"02A0","dlc":8,"data":[32,0,110,29,204,4,227,0],"label":"R"},{"ts":31.721,"id":"0316","dlc":8,"data":[69,38,168,9,38,36,0,124],"label":"R"},{"ts":31.941,"id":"0329","dlc":8,"data":[64,177,127,20,17,32,0,20],"label":"R"},{"ts":32.162,"id":"043F","dlc":8,"data":[16,64,96,255,90,134,8,0],"label":"R"},{"ts":32.385,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"},{"ts":32.606,"id":"0131","dlc":8,"data":[251,127,0,0,192,127,13,150],"label":"R"},{"ts":32.827,"id":"02B0","dlc":5,"data":[255,127,0,5,107],"label":"R"},{"ts":33.048,"id":"02A0","dlc":8,"data":[0,0,110,29,204,4,227,0],"label":"R"},{"ts":33.268,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":33.489,"id":"043F","dlc":8,"data":[16,64,96,255,90,127,8,0],"label":"R"},{"ts":33.713,"id":"00A0","dlc":8,"data":[96,124,172,9,0,32,2,0],"label":"R"},{"ts":33.934,"id":"0350","dlc":8,"data":[54,43,100,108,116,0,0,97],"label":"R"},{"ts":34.155,"id":"04B1","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"R"},{"ts":34.376,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":34.598,"id":"0260","dlc":8,"data":[28,38,38,48,0,144,119,60],"label":"R"},{"ts":34.818,"id":"02A0","dlc":8,"data":[32,0,110,29,204,4,227,0],"label":"R"},{"ts":35.039,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":35.26,"id":"0329","dlc":8,"data":[142,176,127,20,17,32,0,20],"label":"R"},{"ts":35.481,"id":"04F0","dlc":8,"data":[0,0,0,128,0,21,23,20],"label":"R"},{"ts":35.704,"id":"0002","dlc":8,"data":[0,0,0,0,0,3,3,249],"label":"R"},{"ts":35.924,"id":"0002","dlc":8,"data":[0,0,0,0,0,6,9,74],"label":"R"},{"ts":36.145,"id":"0140","dlc":8,"data":[0,0,0,0,36,0,47,0],"label":"R"},{"ts":36.365,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":36.586,"id":"0329","dlc":8,"data":[220,177,127,20,17,32,0,20],"label":"R"},{"ts":36.808,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":37.028,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":37.25,"id":"05F0","dlc":2,"data":[0,0],"label":"R"},{"ts":37.473,"id":"0260","dlc":8,"data":[27,38,38,48,0,144,119,61],"label":"R"},{"ts":37.694,"id":"0430","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"R"},{"ts":37.914,"id":"0329","dlc":8,"data":[220,177,127,20,17,32,0,20],"label":"R"},{"ts":38.134,"id":"01F1","dlc":8,"data":[8,0,0,0,0,0,0,0],"label":"R"},{"ts":38.355,"id":"0002","dlc":8,"data":[0,0,0,0,0,1,12,218],"label":"R"},{"ts":38.577,"id":"04F0","dlc":8,"data":[0,0,0,128,0,21,23,20],"label":"R"},{"ts":38.8,"id":"02B0","dlc":5,"data":[255,127,0,5,208],"label":"R"},{"ts":39.018,"id":"0440","dlc":8,"data":[255,0,0,0,255,129,8,0],"label":"R"},{"ts":39.242,"id":"0260","dlc":8,"data":[28,38,38,48,0,144,118,10],"label":"R"},{"ts":39.462,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":39.684,"id":"0002","dlc":8,"data":[0,0,0,0,0,8,1,77],"label":"R"},{"ts":39.904,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"},{"ts":40.125,"id":"0131","dlc":8,"data":[238,127,0,0,207,127,13,157],"label":"R"},{"ts":40.348,"id":"0370","dlc":8,"data":[0,32,0,0,0,0,0,0],"label":"R"},{"ts":40.57,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":40.791,"id":"0329","dlc":8,"data":[220,177,127,20,17,32,0,20],"label":"R"},{"ts":41.011,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":41.233,"id":"0545","dlc":8,"data":[216,0,0,142,0,0,0,0],"label":"R"},{"ts":41.454,"id":"04B1","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"R"},{"ts":41.675,"id":"0130","dlc":8,"data":[254,127,0,255,28,128,8,158],"label":"R"},{"ts":41.897,"id":"0140","dlc":8,"data":[0,0,0,0,16,11,46,189],"label":"R"},{"ts":42.118,"id":"04F0","dlc":8,"data":[0,0,0,128,0,21,23,20],"label":"R"},{"ts":42.339,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":42.56,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":42.782,"id":"0440","dlc":8,"data":[255,0,0,0,255,129,8,0],"label":"R"},{"ts":43.003,"id":"05F0","dlc":2,"data":[0,0],"label":"R"},{"ts":43.224,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"},{"ts":43.445,"id":"0140","dlc":8,"data":[0,0,0,0,24,8,41,54],"label":"R"},{"ts":43.668,"id":"018F","dlc":8,"data":[254,67,0,0,0,61,0,0],"label":"R"},{"ts":43.889,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":44.109,"id":"02C0","dlc":8,"data":[20,0,0,0,0,0,0,0],"label":"R"},{"ts":44.33,"id":"043F","dlc":8,"data":[16,64,96,255,90,136,8,0],"label":"R"},{"ts":44.551,"id":"05F0","dlc":2,"data":[0,0],"label":"R"},{"ts":44.775,"id":"0153","dlc":8,"data":[0,33,16,255,0,255,0,0],"label":"R"}],"attack":[{"ts":20.812,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":20.954,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":21.097,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":21.24,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":21.383,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":21.525,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":21.668,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":21.81,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":21.953,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":22.097,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":22.24,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":22.383,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":22.526,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":22.668,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":22.811,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":22.953,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":23.095,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":23.238,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":23.382,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":23.524,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":23.668,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":23.81,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":23.953,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":24.097,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":24.24,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":24.383,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":24.526,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":24.669,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":24.812,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":24.956,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":25.099,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":25.242,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":25.386,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":25.529,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":25.672,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":25.816,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":30.963,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":31.101,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":31.239,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":31.377,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":31.515,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":31.653,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":31.791,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":31.953,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":32.09,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":32.228,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":32.365,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":32.502,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":32.643,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":32.802,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":32.939,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":33.077,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":33.214,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":33.352,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":33.506,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":33.651,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":33.789,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":33.927,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":34.065,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":34.203,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":34.366,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":34.503,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":34.642,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":34.78,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":34.918,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":35.059,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":35.217,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":35.355,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":35.493,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":35.631,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":35.769,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":40.917,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":41.054,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":41.192,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":41.33,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":41.467,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":41.608,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":41.767,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":41.905,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":42.043,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":42.181,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":42.319,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":42.474,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":42.619,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":42.757,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":42.894,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":43.032,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":43.169,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":43.331,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":43.469,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":43.607,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":43.745,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":43.882,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":44.023,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":44.183,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":44.321,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":44.459,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":44.596,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":44.734,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"},{"ts":44.89,"id":"0000","dlc":8,"data":[0,0,0,0,0,0,0,0],"label":"T"}]};
+
+/* ══════════════════════════════════════
+   ECU DEFINITIONS & DECODE FUNCTIONS
+   ══════════════════════════════════════ */
+const ECU_MAP={
+  '0316':{name:'Wheel Speed',  desc:'Vehicle speed sensor',    color:'#3fb950'},
+  '0350':{name:'Engine ECU',   desc:'Engine/RPM data',         color:'#ffa657'},
+  '0130':{name:'EPS-1',        desc:'Steering torque L',       color:'#58a6ff'},
+  '0131':{name:'EPS-2',        desc:'Steering torque R',       color:'#79c0ff'},
+  '0140':{name:'Throttle ECU', desc:'Throttle position',       color:'#d2a8ff'},
+  '0329':{name:'SAS',          desc:'Steering angle sensor',   color:'#bc8cff'},
+  '0260':{name:'ESP ECU',      desc:'Stability control',       color:'#1f6feb'},
+  '02A0':{name:'BCM',          desc:'Body control module',     color:'#8b949e'},
+  '02B0':{name:'ABS',          desc:'Anti-lock brake system',  color:'#e24b4a'},
+  '02C0':{name:'Gateway',      desc:'CAN gateway module',      color:'#6e7681'},
+  '0545':{name:'TCM',          desc:'Transmission control',    color:'#b88aff'},
+  '043F':{name:'CLU-1',        desc:'Cluster display unit',    color:'#56d364'},
+  '0440':{name:'CLU-2',        desc:'Cluster display 2',       color:'#3fb950'},
+  '0002':{name:'CGW',          desc:'Central gateway counter', color:'#6e7681'},
+  '0153':{name:'FATC',         desc:'A/C control',             color:'#39d353'},
+  '018F':{name:'AFLS',         desc:'Adaptive front lighting', color:'#ffd700'},
+  '04F0':{name:'AVM',          desc:'Around view monitor',     color:'#8b949e'},
+  '04B1':{name:'AHB',          desc:'Auto high beam',          color:'#f5c518'},
+  '01F1':{name:'LKA',          desc:'Lane keeping assist',     color:'#40a9ff'},
+  '0370':{name:'SPAS',         desc:'Smart parking assist',    color:'#8b949e'},
+  '0430':{name:'EPB',          desc:'Electric park brake',     color:'#db3131'},
+  '0690':{name:'HUD',          desc:'Head-up display',         color:'#9ecbff'},
+  '0000':{name:'ATTACKER',     desc:'Flooding frame (ID=0x0000)',color:'#f85149'},
+  '7DF' :{name:'OBD-II',       desc:'Diagnostic broadcast',   color:'#bc8cff'},
+};
+
+function decodeFrame(id, data) {
+  switch(id) {
+    case '0316': {
+      const spd = ((data[1]<<8)|data[2]) * 0.01;
+      const steer = ((data[4]<<8)|data[5]) * 0.01;
+      return `spd:${spd.toFixed(1)}km/h steer:${steer.toFixed(1)}`;
+    }
+    case '0350': return `engine_ctr:${data[2].toString(16).toUpperCase()} chk:${data[7].toString(16).toUpperCase()}`;
+    case '0130': case '0131': {
+      const torq = (data[0]-128);
+      return `torq:${torq>0?'+':''}${torq} cnt:${data[6].toString(16)}`;
+    }
+    case '0140': return `thr:${data[4]} cnt:${data[6].toString(16)}`;
+    case '0329': return `sas_ctr:${data[0].toString(16).toUpperCase()} ang_h:${data[1].toString(16).toUpperCase()}`;
+    case '0002': return `cgw_cnt:${data[5].toString(16)}${data[6].toString(16).padStart(2,'0')}`;
+    case '0545': return `tcm:${data[1].toString(16).toUpperCase()} gear_d:${data[3].toString(16).toUpperCase()}`;
+    case '0000': return '⚠ FLOOD FRAME (Arb ID=0x0000)';
+    default: return '';
+  }
+}
+
+/* ══════════════════════════════════════
+   VEHICLE STATE DEFINITIONS
+   ══════════════════════════════════════ */
+const VEH_ITEMS=[
+  {key:'speed',    label:'Speed',       unit:'km/h', src:'0316', decode:d=>(((d[1]<<8)|d[2])*0.01).toFixed(1)},
+  {key:'steer',    label:'Steering',    unit:'°',    src:'0316', decode:d=>(((d[4]<<8)|d[5])*0.01).toFixed(1)},
+  {key:'torq_l',   label:'EPS Torque L',unit:'',     src:'0130', decode:d=>(d[0]-128).toString()},
+  {key:'torq_r',   label:'EPS Torque R',unit:'',     src:'0131', decode:d=>(d[0]-128).toString()},
+  {key:'thr',      label:'Throttle',    unit:'raw',  src:'0140', decode:d=>d[4].toString()},
+  {key:'sas',      label:'SAS counter', unit:'',     src:'0329', decode:d=>'0x'+d[0].toString(16).toUpperCase()},
+  {key:'tcm',      label:'TCM data',    unit:'',     src:'0545', decode:d=>'0x'+d[3].toString(16).toUpperCase()},
+  {key:'cgw',      label:'CGW counter', unit:'',     src:'0002', decode:d=>d[5].toString(16).toUpperCase()+d[6].toString(16).toUpperCase().padStart(2,'0')},
+];
+
+/* ══════════════════════════════════════
+   SIMULATION STATE
+   ══════════════════════════════════════ */
+let running=false, simInterval=null, tick=0;
+let activeAtk='none';
+let cntTotal=0, cntNormal=0, cntAtk=0, cntAnom=0;
+let niIdx=0, aiIdx=0; // normal/attack index
+let prevData={}; // prev bytes per arbId
+let idsEventCount=0;
+let seenIds=new Set();
+let lastAtkLog=0;
+let busHistory=Array(80).fill(0), atkHistory=Array(80).fill(0);
+let chartObj=null;
+let simuTime=0;
+let capturedFrames=[];
+
+/* ── CAPTURE STATE ── */
+let isCapturing=false;
+let captureBuffer=[];   // 캡처된 프레임 저장
+let captureStartTs=0;   // 캡처 시작 시각 (simuTime)
+
+// Spoofing: inject fake 0316 frames with > 200 km/h
+function makeSpoofFrame(ts) {
+  // Speed: 200 km/h = 20000 in 0.01 units = 0x4E20
+  const spd=200+Math.floor(Math.random()*30);
+  const raw=Math.round(spd/0.01);
+  return {ts, id:'0316', dlc:8, data:[0x45,(raw>>8)&0xFF,raw&0xFF,0x09,(raw>>8)&0xFF,0x24,0x00,0x7C], label:'S'};
+}
+// Fuzzing: take a normal frame and randomize some bytes
+function makeFuzzFrame(base) {
+  const d=[...base.data];
+  const numCorrupt=2+Math.floor(Math.random()*3);
+  const changed=[];
+  for(let i=0;i<numCorrupt;i++){
+    const bi=Math.floor(Math.random()*d.length);
+    d[bi]=Math.floor(Math.random()*256);
+    changed.push(bi);
+  }
+  return {ts:base.ts, id:base.id, dlc:base.dlc, data:d, label:'F', fuzzedBytes:changed};
+}
+
+/* ══════════════════════════════════════
+   UI BUILD
+   ══════════════════════════════════════ */
+function buildVehGrid(){
+  const el=document.getElementById('vehGrid');
+  el.innerHTML=VEH_ITEMS.map(v=>`
+    <div class="veh-item" id="vi_${v.key}">
+      <div class="vi-label">${v.label}</div>
+      <div class="vi-val" id="vv_${v.key}">—</div>
+      <div class="vi-unit">${v.unit}</div>
+      <div class="vi-src">0x${v.src}</div>
+    </div>`).join('');
+}
+
+function buildECUStatus(){
+  const el=document.getElementById('ecuStatus');
+  const ids=['0316','0350','0130','0131','0140','0329','0545','0260','02A0','0002','043F','0000'];
+  el.innerHTML=ids.map(id=>{
+    const e=ECU_MAP[id]||{name:id,desc:''};
+    return `<div class="ecu-chip" id="ec_${id}">
+      <div class="ecu-dot" id="edot_${id}"></div>
+      <span class="ecu-name">${e.name} (${id})</span>
+      <span class="ecu-state" id="est_${id}">offline</span>
+    </div>`;
+  }).join('');
+}
+
+function buildDiffTable(){
+  const el=document.getElementById('diffBody');
+  const ids=['0316','0350','0130','0131','0140','0329','0545','0260','02A0','0002'];
+  el.innerHTML=ids.map(id=>{
+    const e=ECU_MAP[id]||{name:id};
+    return `<div class="diff-row" id="dr_${id}">
+      <span style="color:var(--text3);font-family:var(--mono)">0x${id}</span>
+      <span style="color:var(--text2)">${e.name}</span>
+      <span id="dprev_${id}" style="color:var(--text3)">—</span>
+      <span id="dcur_${id}">—</span>
+      <span id="ddelta_${id}" class="delta-badge delta-ok">—</span>
+    </div>`;
+  }).join('');
+}
+
+function h2(n){return n.toString(16).toUpperCase().padStart(2,'0');}
+function renderBytes(bytes, changed, atkType){
+  return bytes.map((b,i)=>{
+    const hex=h2(b);
+    let cls='byte-cell';
+    if(changed && changed.includes(i)) cls+=' '+(atkType==='fuzz'?'fuzzed':'changed');
+    return `<span class="${cls}">${hex}</span>`;
+  }).join(' ');
+}
+
+/* ══════════════════════════════════════
+   FRAME RENDERING
+   ══════════════════════════════════════ */
+const MAX_ROWS=18;
+let shownRows=[];
+
+function addFrame(frame){
+  const tbody=document.getElementById('frameTbody');
+  shownRows.unshift(frame);
+  if(shownRows.length>MAX_ROWS)shownRows.pop();
+
+  tbody.innerHTML=shownRows.map(f=>{
+    const isAtk=f.label==='T'||f.label==='S'||f.label==='F';
+    const rowCls=f.label==='T'?'row-t':f.label==='S'?'row-spoof':f.label==='F'?'row-fuzz':'row-r new-frame';
+    const prev=prevData[f.id];
+    const changed=prev ? f.data.map((b,i)=>b!==prev[i]?i:-1).filter(i=>i>=0) : [];
+    const atkCls=f.label==='F'?'fuzz':f.label==='S'?'injected':'changed';
+    const bytes=Array(8).fill(0).map((_,i)=>i<f.dlc ? `<td><span class="byte-cell${isAtk&&changed.includes(i)?' '+atkCls:''}">${h2(f.data[i])}</span></td>` : '<td style="color:var(--text3)">—</td>');
+    const lblCls=f.label==='T'?'lbl-T':f.label==='S'?'lbl-S':f.label==='F'?'lbl-F':'lbl-R';
+    const ts=f.ts.toFixed(3);
+    const decoded=decodeFrame(f.id, f.data);
+    return `<tr class="${rowCls}">
+      <td style="color:var(--text3)">${ts}</td>
+      <td style="color:${f.label==='T'?'var(--red)':f.label==='S'?'var(--purple)':f.label==='F'?'var(--orange)':'var(--blue)'}">0x${f.id}</td>
+      <td>${f.dlc}</td>
+      ${bytes.join('')}
+      <td><span class="lbl ${lblCls}">${f.label}</span></td>
+      <td style="font-size:10px;color:var(--text3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${decoded}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('frameCount').textContent=cntTotal+' frames';
+}
+
+/* ══════════════════════════════════════
+   VEHICLE STATE UPDATE
+   ══════════════════════════════════════ */
+function updateVehState(frame){
+  VEH_ITEMS.forEach(v=>{
+    if(v.src===frame.id){
+      try{
+        const val=v.decode(frame.data);
+        const el=document.getElementById('vv_'+v.key);
+        const card=document.getElementById('vi_'+v.key);
+        if(el){
+          el.textContent=val;
+          const anomaly=frame.label!=='R';
+          card.className='veh-item'+(anomaly?' anomaly':'');
+        }
+      }catch(e){}
+    }
+  });
+  if(frame.id==='0316'){
+    const spd=(((frame.data[1]<<8)|frame.data[2])*0.01).toFixed(1);
+    document.getElementById('m_speed').textContent=spd;
+    document.getElementById('m_speed').className='metric-val'+(parseFloat(spd)>180?' crit':parseFloat(spd)>130?' warn':'');
+  }
+  vsUpdateGauges(frame);
+}
+
+/* ══════════════════════════════════════
+   ECU STATUS UPDATE
+   ══════════════════════════════════════ */
+function updateECUStatus(frame){
+  const dot=document.getElementById('edot_'+frame.id);
+  const st=document.getElementById('est_'+frame.id);
+  const chip=document.getElementById('ec_'+frame.id);
+  if(!dot||!st)return;
+  dot.style.background=frame.label!=='R'?'var(--red)':'var(--green)';
+  st.textContent=frame.label!=='R'?'⚠ '+frame.label:'active';
+  st.className='ecu-state'+(frame.label!=='R'?' crit':'');
+  if(chip) chip.className='ecu-chip'+(frame.label!=='R'?' comp':'');
+}
+
+/* ══════════════════════════════════════
+   DIFF TABLE UPDATE
+   ══════════════════════════════════════ */
+function updateDiff(frame){
+  const id=frame.id;
+  const prev=prevData[id];
+  const cur=frame.data;
+  const prevEl=document.getElementById('dprev_'+id);
+  const curEl=document.getElementById('dcur_'+id);
+  const deltaEl=document.getElementById('ddelta_'+id);
+  const rowEl=document.getElementById('dr_'+id);
+  if(!prevEl)return;
+
+  if(prev){
+    prevEl.innerHTML=prev.slice(0,8).map(b=>`<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${h2(b)}</span>`).join(' ');
+    const changed=cur.map((b,i)=>b!==(prev[i]||0)?i:-1).filter(i=>i>=0);
+    const atkClass=frame.label==='F'?'fuzzed':frame.label==='S'?'injected':'changed';
+    curEl.innerHTML=cur.map((b,i)=>`<span class="byte-cell${changed.includes(i)?' '+atkClass:''}" style="font-size:10px">${h2(b)}</span>`).join(' ');
+    const n=changed.length;
+    if(rowEl) rowEl.className='diff-row'+(n>0?(frame.label==='F'?' fuzz-row':frame.label==='S'?' spoof-row':' changed-row'):'');
+    if(deltaEl){
+      if(n===0){deltaEl.textContent='≡';deltaEl.className='delta-badge delta-ok';}
+      else if(n<=2){deltaEl.textContent=n+'B↑';deltaEl.className='delta-badge delta-warn';}
+      else{deltaEl.textContent=n+'B↑';deltaEl.className='delta-badge delta-crit';}
+    }
+  } else {
+    prevEl.textContent='(new)';
+    curEl.innerHTML=cur.map(b=>`<span style="font-size:10px;font-family:var(--mono)">${h2(b)}</span>`).join(' ');
+  }
+  prevData[id]=[...cur.slice(0,8)].concat(Array(8-cur.length).fill(0));
+}
+
+/* ══════════════════════════════════════
+   IDS LOG
+   ══════════════════════════════════════ */
+function addIDS(msg, type='ids', cls='info'){
+  const el=document.getElementById('idsLog');
+  const now=new Date();
+  const ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0')+'.'+now.getMilliseconds().toString().padStart(3,'0').slice(0,2);
+  const row=document.createElement('div');
+  row.className='ids-row';
+  row.innerHTML=`<span class="ids-ts">${ts}</span><span class="ids-tag tag-${type}">[${type.toUpperCase()}]</span><span class="ids-msg ${cls}">${msg}</span>`;
+  el.insertBefore(row, el.firstChild.nextSibling||null);
+  while(el.children.length>60)el.removeChild(el.lastChild);
+  idsEventCount++;
+  document.getElementById('idsCount').textContent=idsEventCount+' events';
+}
+
+/* ══════════════════════════════════════
+   METRICS UPDATE
+   ══════════════════════════════════════ */
+function updateMetrics(){
+  const busLoad=activeAtk==='flood'?72+Math.round(Math.random()*20):
+                activeAtk==='spoof'?18+Math.round(Math.random()*8):
+                activeAtk==='fuzz'?22+Math.round(Math.random()*12):
+                10+Math.round(Math.random()*6);
+  const fps=activeAtk==='flood'?700+Math.round(Math.random()*300):
+            activeAtk==='spoof'?55+Math.round(Math.random()*15):
+            activeAtk==='fuzz'?60+Math.round(Math.random()*20):
+            45+Math.round(Math.random()*15);
+
+  const bl=document.getElementById('m_busload');
+  bl.textContent=busLoad+'%';
+  bl.className='metric-val'+(busLoad>70?'crit':busLoad>35?'warn':'ok');
+  document.getElementById('m_fps').textContent=fps;
+  document.getElementById('m_total').textContent=cntTotal;
+  document.getElementById('m_normal').textContent=cntNormal;
+  const atkEl=document.getElementById('m_attack');
+  atkEl.textContent=cntAtk;
+  atkEl.className='metric-val'+(cntAtk>0?'crit':'');
+  document.getElementById('m_atkpct').textContent=cntTotal>0?((cntAtk/cntTotal*100).toFixed(1))+'% of traffic':'0%';
+  document.getElementById('m_anom').textContent=cntAnom;
+  document.getElementById('m_ids').textContent=seenIds.size;
+
+  busHistory.push(busLoad); busHistory.shift();
+  const atkVal=activeAtk!=='none'?busLoad*0.9:0;
+  atkHistory.push(atkVal); atkHistory.shift();
+
+  if(chartObj){
+    chartObj.data.datasets[0].data=[...busHistory];
+    const atkColor=activeAtk==='flood'?'rgba(248,81,73,0.4)':
+                   activeAtk==='spoof'?'rgba(188,140,255,0.4)':
+                   activeAtk==='fuzz'?'rgba(255,166,87,0.4)':'rgba(63,185,80,0.15)';
+    chartObj.data.datasets[1].data=[...atkHistory];
+    chartObj.data.datasets[1].backgroundColor=atkColor;
+    chartObj.update('none');
+  }
+}
+
+/* ══════════════════════════════════════
+   MAIN SIMULATION TICK
+   ══════════════════════════════════════ */
+function simTick(){
+  tick++;
+  simuTime+=0.2;
+  const frames=[];
+
+  // Pick base frames depending on mode
+  if(activeAtk==='flood'){
+    // Mix normal + T-labeled flooding frames
+    for(let i=0;i<3;i++){
+      frames.push(SONATA_DATA.normal[niIdx%SONATA_DATA.normal.length]);
+      niIdx++;
+    }
+    for(let i=0;i<5;i++){
+      frames.push(SONATA_DATA.attack[aiIdx%SONATA_DATA.attack.length]);
+      aiIdx++;
+    }
+  } else if(activeAtk==='spoof'){
+    for(let i=0;i<2;i++){
+      frames.push(SONATA_DATA.normal[niIdx%SONATA_DATA.normal.length]);
+      niIdx++;
+    }
+    if(Math.random()<0.35) frames.push(makeSpoofFrame(simuTime));
+  } else if(activeAtk==='fuzz'){
+    for(let i=0;i<2;i++){
+      const base=SONATA_DATA.normal[niIdx%SONATA_DATA.normal.length];
+      if(Math.random()<0.4) frames.push(makeFuzzFrame(base));
+      else frames.push(base);
+      niIdx++;
+    }
+  } else {
+    for(let i=0;i<2;i++){
+      frames.push(SONATA_DATA.normal[niIdx%SONATA_DATA.normal.length]);
+      niIdx++;
+    }
+    if(capturedFrames.length<30) capturedFrames.push(...frames);
+  }
+
+  frames.forEach(f=>{
+    if(!f) return;
+    const fWithTs={...f, ts:parseFloat(simuTime.toFixed(3))};
+    cntTotal++;
+    seenIds.add(f.id);
+    if(f.label==='R') cntNormal++;
+    else { cntAtk++; cntAnom++; }
+    updateVehState(fWithTs);
+    updateECUStatus(fWithTs);
+    updateDiff(fWithTs);
+    addFrame(fWithTs);
+    // ── 캡처 중이면 버퍼에 추가 ──
+    if(isCapturing) {
+      captureBuffer.push(fWithTs);
+      document.getElementById('captureCount').textContent=captureBuffer.length+' frames';
+    }
+    simuTime+=0.001;
+  });
+
+  // IDS triggers
+  const now=Date.now();
+  if(activeAtk==='flood' && now-lastAtkLog>800){
+    lastAtkLog=now;
+    addIDS('ID=0x0000 flooding 감지 — 단위시간 내 '+Math.round(35+Math.random()*15)+'회 반복','flood','crit');
+  } else if(activeAtk==='spoof' && now-lastAtkLog>1400){
+    lastAtkLog=now;
+    const spd=(200+Math.random()*30).toFixed(1);
+    addIDS(`0x0316 speed 이상값: ${spd} km/h (정상범위 초과)`,'spoof','crit');
+  } else if(activeAtk==='fuzz' && now-lastAtkLog>1000){
+    lastAtkLog=now;
+    addIDS('랜덤 바이트 패턴 감지 — CAN 프레임 데이터 무결성 실패','fuzz','warn');
+  }
+
+  if(tick%8===0) updateMetrics();
+}
+
+/* ══════════════════════════════════════
+   ATK MODE
+   ══════════════════════════════════════ */
+const ATK_DESCS={
+  none:'Normal 모드: Hyundai Sonata 실제 CAN 데이터 (R 레이블) 재생 — 정상 트래픽',
+  flood:'⚡ Flooding 공격 (실제 데이터): 0x0000 ID로 모든 제로 데이터 대량 주입. Bus Load >70%, 정상 ECU 프레임 지연. OTIDS 데이터셋 T 레이블 프레임 포함.',
+  spoof:'🎭 Spoofing 공격 (시뮬): 0x0316 (Wheel Speed ECU)을 위장하여 200km/h+ 가짜 속도값 주입. 동일 Arb ID에 변조된 B1-B2 바이트 삽입.',
+  fuzz:'🔀 Fuzzing 공격 (시뮬): 정상 ECU 프레임의 2-4개 바이트를 무작위로 변조하여 전송. 다양한 ID에 걸쳐 데이터 무결성을 파괴.',
+};
+
+function setAtk(mode){
+  activeAtk=mode;
+  ['none','flood','spoof','fuzz'].forEach(m=>{
+    document.getElementById('btn_'+m).className='atk-btn'+(m===mode?' sel-'+mode:'');
+  });
+  document.getElementById('atkDesc').textContent=ATK_DESCS[mode];
+  document.getElementById('atkDesc').style.color=
+    mode==='flood'?'rgba(248,81,73,.8)':
+    mode==='spoof'?'rgba(188,140,255,.8)':
+    mode==='fuzz'?'rgba(255,166,87,.8)':'var(--text3)';
+  updateStatus();
+  if(running && mode!=='none'){
+    addIDS('공격 시작: '+{flood:'DoS Flooding',spoof:'Speed Spoofing',fuzz:'Data Fuzzing'}[mode],'ids','crit');
+  }
+  vsUpdateMode(mode);
+  vs_currentMode = mode;
+}
+
+function updateStatus(){
+  const dot=document.getElementById('statusDot');
+  const txt=document.getElementById('statusTxt');
+  if(!running){dot.className='dot stopped';txt.textContent='Stopped';return;}
+  if(activeAtk==='none'){dot.className='dot running';txt.textContent='Running — Normal';}
+  else{dot.className='dot atk';txt.textContent='Running — '+{flood:'Flooding',spoof:'Spoofing',fuzz:'Fuzzing'}[activeAtk];}
+}
+
+/* ══════════════════════════════════════
+   SIM CONTROL
+   ══════════════════════════════════════ */
+function startSim(){
+  running=true;
+  document.getElementById('startBtn').style.display='none';
+  document.getElementById('stopBtn').style.display='';
+  document.getElementById('captureBtn').disabled=false;
+  document.getElementById('captureBtn').title='클릭하여 캡처 시작';
+  updateStatus();
+  addIDS('시뮬레이터 시작됨 — Sonata OTIDS 데이터셋 로드','sys','ok');
+  simInterval=setInterval(simTick, 200);
+  vs_running = true;
+}
+function stopSim(){
+  running=false;
+  clearInterval(simInterval);
+  // 캡처 중이었다면 자동 종료
+  if(isCapturing){
+    isCapturing=false;
+    if(captureBuffer.length>0) downloadCapture();
+    captureBuffer=[];
+  }
+  document.getElementById('startBtn').style.display='';
+  document.getElementById('stopBtn').style.display='none';
+  const btn=document.getElementById('captureBtn');
+  btn.disabled=true; btn.className='btn capture-off'; btn.textContent='⏺ Capture';
+  btn.title='Start 후 사용 가능';
+  document.getElementById('captureBadge').innerHTML='<span id="captureCount" style="font-family:var(--mono)">0 frames</span>';
+  updateStatus();
+  addIDS('시뮬레이터 정지','sys','info');
+  vs_running = false;
+}
+function resetSim(){
+  stopSim();
+  tick=0;simuTime=0;niIdx=0;aiIdx=0;
+  cntTotal=0;cntNormal=0;cntAtk=0;cntAnom=0;idsEventCount=0;
+  shownRows=[];prevData={};seenIds.clear();capturedFrames=[];
+  busHistory=Array(80).fill(0);atkHistory=Array(80).fill(0);
+  document.getElementById('frameTbody').innerHTML='';
+  document.getElementById('diffBody').innerHTML='';
+  document.getElementById('idsLog').innerHTML='<div class="ids-row" style="color:var(--text3)"><span class="ids-ts">—</span><span class="ids-tag tag-sys">[SYS]</span><span class="ids-msg">리셋됨 — Start를 눌러 시작하세요</span></div>';
+  document.getElementById('idsCount').textContent='0 events';
+  document.getElementById('frameCount').textContent='0 frames';
+  isCapturing=false; captureBuffer=[];
+  const cbtn=document.getElementById('captureBtn');
+  cbtn.disabled=true; cbtn.className='btn capture-off'; cbtn.textContent='⏺ Capture';
+  cbtn.title='Start 후 사용 가능';
+  document.getElementById('captureBadge').innerHTML='<span id="captureCount" style="font-family:var(--mono)">0 frames</span>';
+  updateMetrics();
+  setAtk('none');
+  // rebuild veh grid
+  buildVehGrid();
+  buildECUStatus();
+  buildDiffTable();
+  vsUpdateMode('none'); vs_currentMode='none'; vs_currentSpeed=0;
+}
+
+/* ══════════════════════════════════════
+   CAPTURE & EXPORT
+   ══════════════════════════════════════ */
+function toggleCapture(){
+  if(!running) return;
+  if(!isCapturing){
+    // ── 캡처 시작 ──
+    isCapturing=true;
+    captureBuffer=[];
+    captureStartTs=simuTime;
+    const btn=document.getElementById('captureBtn');
+    btn.textContent='⏹ Stop & Save';
+    btn.className='btn capture-on';
+    const badge=document.getElementById('captureBadge');
+    badge.className='capture-badge active';
+    badge.innerHTML='<span class="rec-dot"></span><span id="captureCount" style="font-family:var(--mono)">0 frames</span>';
+    addIDS('캡처 시작 — CAN 프레임 기록 중','sys','info');
+  } else {
+    // ── 캡처 중지 → TXT 다운로드 ──
+    isCapturing=false;
+    const btn=document.getElementById('captureBtn');
+    btn.textContent='⏺ Capture';
+    btn.className='btn capture-off';
+    const badge=document.getElementById('captureBadge');
+    badge.className='capture-badge';
+    badge.innerHTML=`<span id="captureCount" style="font-family:var(--mono)">${captureBuffer.length} frames</span>`;
+    if(captureBuffer.length===0){
+      addIDS('캡처된 프레임 없음 — 저장 취소','sys','warn');
+      return;
+    }
+    downloadCapture();
+  }
+}
+
+function downloadCapture(){
+  // 원본 OTIDS 포맷으로 출력:
+  // timestamp,ArbID,DLC,B0,B1,...,BN,Label
+  const BASE_TS=1513920459.0; // 원본 데이터셋 기준 타임스탬프
+  const header=[
+    '# CAN Bus Capture — Hyundai Sonata Simulator',
+    '# Attack mode: '+({none:'Normal',flood:'Flooding (OTIDS)',spoof:'Spoofing (sim)',fuzz:'Fuzzing (sim)'}[activeAtk]||activeAtk),
+    '# Captured frames: '+captureBuffer.length,
+    '# Capture duration: '+((captureBuffer[captureBuffer.length-1].ts - captureBuffer[0].ts)).toFixed(3)+'s',
+    '# Format: timestamp,ArbID,DLC,B0,B1,...,BN,Label',
+    '# Labels: R=Normal  T=Flooding  S=Spoofing  F=Fuzzing',
+    '# Generated: '+new Date().toISOString(),
+    '#',
+  ].join('\n');
+
+  const lines=captureBuffer.map(f=>{
+    const ts=(BASE_TS + f.ts).toFixed(6);
+    const bytes=f.data.slice(0, f.dlc).map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(',');
+    return `${ts},${f.id},${f.dlc},${bytes},${f.label}`;
+  });
+
+  const content=header+'\n'+lines.join('\n')+'\n';
+  const blob=new Blob([content],{type:'text/plain;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const atkLabel={none:'normal',flood:'flooding',spoof:'spoofing',fuzz:'fuzzing'}[activeAtk]||'capture';
+  const ts=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  const defaultName=`sonata_can_${atkLabel}_${captureBuffer.length}frames_${ts}.txt`;
+  const userInput=prompt('저장할 파일 이름을 입력하세요 (.txt 자동 추가):', defaultName.replace('.txt',''));
+  if(userInput===null) { URL.revokeObjectURL(url); addIDS('캡처 저장 취소됨','sys','warn'); return; }
+  const finalName=(userInput.trim()||defaultName.replace('.txt',''))+'.txt';
+  a.href=url;
+  a.download=finalName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  addIDS(`캡처 저장 완료 — ${captureBuffer.length}개 프레임 → ${finalName}`,'sys','ok');
+}
+
+/* ══════════════════════════════════════
+   CHART INIT
+   ══════════════════════════════════════ */
+function initChart(){
+  const ctx=document.getElementById('loadChart').getContext('2d');
+  chartObj=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:Array(80).fill(''),
+      datasets:[
+        {label:'Bus Load',data:[...busHistory],borderColor:'#3fb950',backgroundColor:'rgba(63,185,80,0.06)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0},
+        {label:'Attack',  data:[...atkHistory],backgroundColor:'rgba(248,81,73,0.25)',borderColor:'transparent',fill:true,tension:.3,pointRadius:0},
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{display:false},
+        y:{min:0,max:100,display:true,
+           ticks:{font:{size:9},color:'#6e7681',stepSize:25,callback:v=>v+'%'},
+           grid:{color:'rgba(48,54,61,1)'},
+           border:{color:'var(--border)'}}
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════
+   INIT
+   ══════════════════════════════════════ */
+buildVehGrid();
+buildECUStatus();
+buildDiffTable();
+initChart();
+vsInit();
+</script>
+</body>
+</html>
