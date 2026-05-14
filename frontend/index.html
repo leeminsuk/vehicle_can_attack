@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hyundai Sonata — CAN Bus Security Simulator</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">CAN<span>//</span>SEC</div>
+  <div class="header-sub">Hyundai Sonata — Real CAN Bus Attack Simulator</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <span class="badge-pill badge-r">Normal (R)</span>
+    <span class="badge-pill badge-t">Flooding (T)</span>
+    <span class="badge-pill badge-sim">Spoofing (sim)</span>
+    <span class="badge-pill badge-sim" style="color:var(--orange);border-color:rgba(255,166,87,.3)">Fuzzing (sim)</span>
+  </div>
+  <div style="margin-left:auto;font-size:11px;color:var(--text3)">Dataset: OTIDS Sonata 2017 &nbsp;|&nbsp; 500 Kbps</div>
+</div>
+
+<div class="main">
+
+<!-- ── CONTROLS ── -->
+<div class="ctrl-panel">
+  <div class="ctrl-row">
+    <button class="btn primary" id="startBtn" onclick="startSim()">&#9654; Start</button>
+    <button class="btn danger" id="stopBtn" onclick="stopSim()" style="display:none">&#9632; Stop</button>
+    <button class="btn" onclick="resetSim()">&#8634; Reset</button>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>
+    <button class="btn capture-off" id="captureBtn" onclick="toggleCapture()" disabled title="Start 후 사용 가능">&#9210; Capture</button>
+    <span class="capture-badge" id="captureBadge">
+      <span id="captureCount" style="font-family:var(--mono)">0 frames</span>
+    </span>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>
+    <span style="font-size:11px;color:var(--text3)">Attack mode:</span>
+    <button class="atk-btn sel-none" id="btn_none" onclick="setAtk('none')">&#10003; Normal</button>
+    <button class="atk-btn" id="btn_flood" onclick="setAtk('flood')">&#9889; Flooding (real data)</button>
+    <button class="atk-btn" id="btn_spoof" onclick="setAtk('spoof')">&#127917; Spoofing (sim)</button>
+    <button class="atk-btn" id="btn_fuzz" onclick="setAtk('fuzz')">&#128256; Fuzzing (sim)</button>
+    <div class="status-indicator">
+      <div class="dot stopped" id="statusDot"></div>
+      <span id="statusTxt" style="font-size:12px;color:var(--text2)">Stopped</span>
+    </div>
+  </div>
+  <div id="atkDesc" style="font-size:11px;color:var(--text3);padding:2px 0">
+    Normal 모드: Hyundai Sonata 실제 CAN 데이터 (R 레이블) 재생
+  </div>
+</div>
+
+
+<!-- ── VISUAL SIMULATOR PANEL ── -->
+<div class="panel vis-panel">
+  <div class="panel-head">
+    <span>Visual Simulator</span>
+    <span style="font-size:10px;color:var(--text3)">Live Vehicle Visualization</span>
+  </div>
+  <div class="vs-wrap">
+    <!-- LEFT: Gauges -->
+    <div class="vs-gauges">
+      <div class="gauge-box">
+        <div class="gauge-title">Speed</div>
+        <svg class="gauge-svg" viewBox="0 0 220 175" id="spdGaugeSvg">
+          <path id="spdBgArc" d="M 57.70,147.30 A 74,74 0 1,1 162.30,147.30" fill="none" stroke="#21262d" stroke-width="18" stroke-linecap="round"/>
+          <path id="spdZoneGreen" fill="none" stroke="#1a7f37" stroke-width="18" stroke-linecap="round" opacity="0.7"/>
+          <path id="spdZoneYellow" fill="none" stroke="#9a7000" stroke-width="18" stroke-linecap="round" opacity="0.7"/>
+          <path id="spdZoneRed" fill="none" stroke="#8b1010" stroke-width="18" stroke-linecap="round" opacity="0.7"/>
+          <path id="spdActiveFill" fill="none" stroke="#3fb950" stroke-width="18" stroke-linecap="round" opacity="0.85"/>
+          <g id="spdTicks"></g>
+          <g id="spdNeedleG" transform="rotate(225,110,95)">
+            <line x1="110" y1="95" x2="110" y2="30" stroke="#e6edf3" stroke-width="2" stroke-linecap="round"/>
+            <line x1="110" y1="95" x2="110" y2="107" stroke="#e6edf3" stroke-width="2" opacity=".3"/>
+          </g>
+          <circle cx="110" cy="95" r="7" fill="#1a1f24" stroke="#444c56" stroke-width="1.5"/>
+          <circle cx="110" cy="95" r="3" fill="#58a6ff"/>
+          <text id="spdText" x="110" y="83" text-anchor="middle" fill="#e6edf3" font-size="22" font-weight="700" font-family="'Courier New',monospace">0</text>
+          <text x="110" y="96" text-anchor="middle" fill="#6e7681" font-size="9" font-family="sans-serif">km/h</text>
+          <text x="42" y="158" text-anchor="middle" fill="#6e7681" font-size="9" font-family="sans-serif">0</text>
+          <text x="178" y="158" text-anchor="middle" fill="#6e7681" font-size="9" font-family="sans-serif">260</text>
+        </svg>
+      </div>
+      <div class="gauge-box">
+        <div class="gauge-title">RPM</div>
+        <svg class="gauge-svg" viewBox="0 0 180 140" id="rpmGaugeSvg">
+          <path id="rpmBgArc" fill="none" stroke="#21262d" stroke-width="15" stroke-linecap="round"/>
+          <path id="rpmZoneGreen" fill="none" stroke="#1a7f37" stroke-width="15" stroke-linecap="round" opacity="0.7"/>
+          <path id="rpmZoneYellow" fill="none" stroke="#9a7000" stroke-width="15" stroke-linecap="round" opacity="0.7"/>
+          <path id="rpmZoneRed" fill="none" stroke="#8b1010" stroke-width="15" stroke-linecap="round" opacity="0.7"/>
+          <path id="rpmActiveFill" fill="none" stroke="#3fb950" stroke-width="15" stroke-linecap="round" opacity="0.85"/>
+          <g id="rpmTicks"></g>
+          <g id="rpmNeedleG" transform="rotate(225,90,78)">
+            <line x1="90" y1="78" x2="90" y2="26" stroke="#e6edf3" stroke-width="2" stroke-linecap="round"/>
+            <line x1="90" y1="78" x2="90" y2="88" stroke="#e6edf3" stroke-width="2" opacity=".3"/>
+          </g>
+          <circle cx="90" cy="78" r="6" fill="#1a1f24" stroke="#444c56" stroke-width="1.5"/>
+          <circle cx="90" cy="78" r="2.5" fill="#58a6ff"/>
+          <text id="rpmText" x="90" y="68" text-anchor="middle" fill="#e6edf3" font-size="18" font-weight="700" font-family="'Courier New',monospace">0</text>
+          <text x="90" y="79" text-anchor="middle" fill="#6e7681" font-size="8" font-family="sans-serif">x1000 rpm</text>
+          <text x="30" y="126" text-anchor="middle" fill="#6e7681" font-size="8" font-family="sans-serif">0</text>
+          <text x="150" y="126" text-anchor="middle" fill="#6e7681" font-size="8" font-family="sans-serif">8</text>
+        </svg>
+      </div>
+      <div class="mini-row">
+        <div class="mini-stat"><div class="mini-label">Gear</div><div class="mini-val" id="vs_gear">N</div></div>
+        <div class="mini-stat"><div class="mini-label">Throttle</div><div class="mini-val" id="vs_thr">0%</div></div>
+        <div class="mini-stat"><div class="mini-label">Steer</div><div class="mini-val" id="vs_steer">0&deg;</div></div>
+      </div>
+    </div>
+    <!-- MIDDLE: Car Canvas -->
+    <div class="vs-car">
+      <div class="vs-car-body">
+        <canvas id="carCanvas" class="car-canvas" width="340" height="220"></canvas>
+        <div class="scanline-overlay"></div>
+        <div class="car-state-text" id="carStateTxt" style="color:#3fb950">NORMAL</div>
+      </div>
+      <div class="warn-bar">
+        <span class="wl wl-ok on" id="wl_ok">&#10003; NORMAL</span>
+        <span class="wl wl-abs" id="wl_abs">&#9888; ABS</span>
+        <span class="wl wl-eng" id="wl_eng">&#9881; ENGINE</span>
+        <span class="wl wl-str" id="wl_str">&#8635; STEER</span>
+        <span class="wl wl-spd" id="wl_spd">&#9889; SPEED</span>
+        <span class="wl wl-bus" id="wl_bus">&#128308; BUS ERR</span>
+        <span class="wl wl-ids" id="wl_ids">&#128270; IDS</span>
+      </div>
+      <div class="spd-compare" id="spdCompare">
+        <div class="spd-cmp-title">SPEED MISMATCH DETECTED</div>
+        <div class="spd-cmp-row">
+          <span class="spd-cmp-lbl">CAN(spoof)</span>
+          <span class="spd-cmp-val" id="spdCmpSpoof" style="color:var(--red)">0 km/h</span>
+          <div class="spd-cmp-bar"><div class="spd-cmp-fill" id="spdCmpSpoofBar" style="background:var(--red);width:0%"></div></div>
+        </div>
+        <div class="spd-cmp-row">
+          <span class="spd-cmp-lbl">Real(est.)</span>
+          <span class="spd-cmp-val" id="spdCmpReal" style="color:var(--green)">0 km/h</span>
+          <div class="spd-cmp-bar"><div class="spd-cmp-fill" id="spdCmpRealBar" style="background:var(--green);width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+    <!-- RIGHT: AI Analysis -->
+    <div class="vs-ai">
+      <div class="ai-key-row">
+        <input class="ai-key-input" type="password" id="aiKeyInput" placeholder="OpenAI API Key (sk-...)" oninput="onApiKeyChange()"/>
+        <button class="ai-eye-btn" id="aiEyeBtn" onclick="toggleKeyVis()" title="Show/hide key">&#128065;</button>
+      </div>
+      <div class="ai-model-row">
+        <span class="ai-model-label">Model:</span>
+        <select class="ai-sel" id="aiModel">
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
+          <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+        </select>
+        <span class="ai-model-label" style="margin-left:4px">Lang:</span>
+        <select class="ai-sel" id="aiLang">
+          <option value="ko">&#54620;&#44397;&#50612;</option>
+          <option value="en">English</option>
+        </select>
+        <button class="btn" style="margin-left:auto;font-size:10px;padding:3px 8px" onclick="clearAiHistory()">Clear</button>
+      </div>
+      <div class="ai-analyze-row">
+        <button class="ai-analyze-btn" id="aiAnalyzeBtn" disabled onclick="analyzeWithAI()">&#128269; Analyze Current Attack with AI</button>
+      </div>
+      <div class="ai-response-area" id="aiResponseArea">
+        <div class="ai-bubble sys">&#128273; OpenAI API &#53412;&#47484; &#51077;&#47141;&#54616;&#47732; &#54788;&#51116; CAN &#48260;&#49828; &#44163;&#44201;&#51012; AI&#44032; &#49892;&#49884;&#44036; &#48516;&#49437;&#54633;&#45768;&#45796;. &#53412;&#45716; &#48652;&#46972;&#50864;&#51800;&#51032; localStorage&#50640;&#47564; &#51200;&#51109;&#46418;&#47728; &#49436;&#48260;&#47196; &#51204;&#49569;&#46104;&#51648; &#50506;&#49845;&#45768;&#45796;.</div>
+      </div>
+      <div class="ai-footer-hint">&#9432; API &#53412;&#45716; &#48652;&#46972;&#50864;&#51800; localStorage&#50640; &#51200;&#51109;&#46428; &middot; &#49436;&#48260; &#51204;&#49569; &#50630;&#51020;</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── METRICS ── -->
+<div class="metrics">
+  <div class="metric"><div class="metric-label">Bus Load</div><div class="metric-val ok" id="m_busload">0%</div><div class="metric-sub">500 Kbps</div></div>
+  <div class="metric"><div class="metric-label">Frame Rate</div><div class="metric-val" id="m_fps">0</div><div class="metric-sub">frames/sec</div></div>
+  <div class="metric"><div class="metric-label">Total Frames</div><div class="metric-val" id="m_total">0</div><div class="metric-sub">since start</div></div>
+  <div class="metric"><div class="metric-label">Normal (R)</div><div class="metric-val ok" id="m_normal">0</div><div class="metric-sub">labeled R</div></div>
+  <div class="metric"><div class="metric-label">Attack (T)</div><div class="metric-val" id="m_attack">0</div><div class="metric-sub" id="m_atkpct">0% of traffic</div></div>
+  <div class="metric"><div class="metric-label">Anomalies</div><div class="metric-val" id="m_anom">0</div><div class="metric-sub">IDS triggered</div></div>
+  <div class="metric"><div class="metric-label">Unique IDs</div><div class="metric-val" id="m_ids">0</div><div class="metric-sub">arb IDs seen</div></div>
+  <div class="metric"><div class="metric-label">Speed</div><div class="metric-val" id="m_speed">&#8212;</div><div class="metric-sub">0x0316 km/h</div></div>
+</div>
+
+<!-- ── VEHICLE STATE + ECU STATUS ── -->
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-head">
+      <span>Vehicle State — Decoded from CAN</span>
+      <span style="font-size:10px;font-weight:400;color:var(--text3)">실시간 디코딩</span>
+    </div>
+    <div class="veh-grid" id="vehGrid"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">
+      <span>ECU Node Status</span>
+      <span id="ecuAtkLabel" style="font-size:10px;color:var(--text3)"></span>
+    </div>
+    <div class="ecu-status" id="ecuStatus"></div>
+  </div>
+</div>
+
+<!-- ── BUS LOAD CHART ── -->
+<div class="panel" style="margin-bottom:14px">
+  <div class="panel-head">
+    <span>Bus Load Timeline</span>
+    <div style="display:flex;gap:14px">
+      <span class="cl-item"><span class="cl-sq" style="background:#3fb950"></span> Normal</span>
+      <span class="cl-item"><span class="cl-sq" style="background:#f85149"></span> Flood attack</span>
+      <span class="cl-item"><span class="cl-sq" style="background:#bc8cff"></span> Spoof</span>
+      <span class="cl-item"><span class="cl-sq" style="background:#ffa657"></span> Fuzz</span>
+    </div>
+  </div>
+  <div class="chart-wrap" style="height:100px">
+    <canvas id="loadChart" role="img" aria-label="CAN bus load over time"></canvas>
+  </div>
+</div>
+
+<!-- ── MAIN GRID: FRAME TABLE + DIFF ── -->
+<div class="grid3">
+  <!-- CAN FRAME TABLE -->
+  <div class="panel">
+    <div class="panel-head">
+      <span>CAN Frame Stream — All Fields</span>
+      <span id="frameCount" style="font-size:10px;color:var(--text3)">0 frames</span>
+    </div>
+    <div class="frame-wrap">
+      <table class="frame-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Arb ID</th>
+            <th>DLC</th>
+            <th>B0</th><th>B1</th><th>B2</th><th>B3</th>
+            <th>B4</th><th>B5</th><th>B6</th><th>B7</th>
+            <th>Label</th>
+            <th>Decoded</th>
+          </tr>
+        </thead>
+        <tbody id="frameTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CAN DATA DIFF -->
+  <div class="panel">
+    <div class="panel-head"><span>CAN Data Diff</span><span style="font-size:10px;color:var(--text3)">before &#8594; after</span></div>
+    <div class="diff-head">
+      <span>Arb ID</span><span>ECU</span><span>Before</span><span>After</span><span>&#916;</span>
+    </div>
+    <div id="diffBody"></div>
+  </div>
+</div>
+
+<!-- ── IDS LOG ── -->
+<div class="panel">
+  <div class="panel-head">
+    <span>IDS / Anomaly Detection Log</span>
+    <span id="idsCount" style="font-size:10px;color:var(--text3)">0 events</span>
+  </div>
+  <div class="ids-wrap" id="idsLog">
+    <div class="ids-row" style="color:var(--text3)">
+      <span class="ids-ts">&#8212;</span>
+      <span class="ids-tag tag-sys">[SYS]</span>
+      <span class="ids-msg">시뮬레이터 대기 중 — Start를 눌러 시작하세요</span>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<footer>
+  Hyundai Sonata CAN Bus Security Simulator &nbsp;|&nbsp;
+  Dataset: <span>OTIDS (Open CAN IDS Dataset) — Flooding Attack</span> &nbsp;|&nbsp;
+  Spoofing &amp; Fuzzing: <span>Simulated</span> &nbsp;|&nbsp;
+  Educational / Research Use Only
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="js/can-data.js"></script>
+<script src="js/simulator.js"></script>
+<script src="js/visualizer.js"></script>
+<script src="js/ai.js"></script>
+</body>
+</html>
