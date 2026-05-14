@@ -11,7 +11,8 @@ function onApiKeyChange(){
 
 function toggleKeyVis(){
   const inp=document.getElementById('aiKeyInput');
-  if(inp)inp.type=inp.type==='password'?'text':'password';
+  const chk=document.getElementById('aiVisCheck');
+  if(inp)inp.type=chk&&chk.checked?'text':'password';
 }
 
 function clearAiHistory(){

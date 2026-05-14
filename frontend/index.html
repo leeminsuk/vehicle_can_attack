@@ -142,7 +142,10 @@
     <div class="vs-ai">
       <div class="ai-key-row">
         <input class="ai-key-input" type="password" id="aiKeyInput" placeholder="OpenAI API Key (sk-...)" oninput="onApiKeyChange()"/>
-        <button class="ai-eye-btn" id="aiEyeBtn" onclick="toggleKeyVis()" title="Show/hide key">&#128065;</button>
+        <label class="ai-vis-toggle" title="Show/hide key">
+          <input type="checkbox" id="aiVisCheck" onchange="toggleKeyVis()"/>
+          <span class="ai-vis-track"><span class="ai-vis-thumb"></span></span>
+        </label>
       </div>
       <div class="ai-model-row">
         <span class="ai-model-label">Model:</span>
