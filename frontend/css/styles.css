@@ -47,6 +47,7 @@ a{color:var(--blue);text-decoration:none}
 .atk-btn.sel-spoof{border-color:var(--purple)!important;background:rgba(188,140,255,.1)!important;color:var(--purple)!important}
 .atk-btn.sel-fuzz{border-color:var(--orange)!important;background:rgba(255,166,87,.1)!important;color:var(--orange)!important}
 .atk-btn.sel-none{border-color:var(--green)!important;background:rgba(63,185,80,.1)!important;color:var(--green)!important}
+.atk-btn.sel-malfunc{border-color:#fdc800!important;background:rgba(253,200,0,.1)!important;color:#fdc800!important}
 .status-indicator{display:flex;align-items:center;gap:6px;font-size:12px;margin-left:auto}
 .dot{width:8px;height:8px;border-radius:50%}
 .dot.running{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 1s infinite}

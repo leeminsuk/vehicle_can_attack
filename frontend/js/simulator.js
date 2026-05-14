@@ -4,7 +4,7 @@
 let running=false, simInterval=null, tick=0;
 let activeAtk='none';
 let cntTotal=0, cntNormal=0, cntAtk=0, cntAnom=0;
-let niIdx=0, aiIdx=0; // normal/attack index
+let niIdx=0, aiIdx=0, fiIdx=0, miIdx=0; // normal/attack/fuzzy/malfunction index
 let prevData={}; // prev bytes per arbId
 let idsEventCount=0;
 let seenIds=new Set();
@@ -29,7 +29,8 @@ const ATK_DESCS={
   none:'Normal 모드: Hyundai Sonata 실제 CAN 데이터 (R 레이블) 재생 — 정상 트래픽',
   flood:'⚡ Flooding 공격 (실제 데이터): 0x0000 ID로 모든 제로 데이터 대량 주입. Bus Load >70%, 정상 ECU 프레임 지연. OTIDS 데이터셋 T 레이블 프레임 포함.',
   spoof:'🎭 Spoofing 공격 (시뮬): 0x0316 (Wheel Speed ECU)을 위장하여 200km/h+ 가짜 속도값 주입. 동일 Arb ID에 변조된 B1-B2 바이트 삽입.',
-  fuzz:'🔀 Fuzzing 공격 (시뮬): 정상 ECU 프레임의 2-4개 바이트를 무작위로 변조하여 전송. 다양한 ID에 걸쳐 데이터 무결성을 파괴.',
+  fuzz:'🔀 Fuzzing 공격 (실제 데이터): 무작위 Arb ID + 완전 랜덤 데이터 프레임 주입. OTIDS Fuzzy_dataset_SONATA T 레이블 프레임 — 알 수 없는 ECU가 CAN 버스에 출현.',
+  malfunc:'⚠ Malfunction 공격 (실제 데이터): 0x0316 (속도) 및 0x043F (클러스터) ECU 대상 오작동 유도. OTIDS Malfunction_dataset T 레이블 — ECU 이상 신호 주입.',
 };
 
 /* ══════════════════════════════════════
@@ -238,11 +239,13 @@ function addIDS(msg, type='ids', cls='info'){
 function updateMetrics(){
   const busLoad=activeAtk==='flood'?72+Math.round(Math.random()*20):
                 activeAtk==='spoof'?18+Math.round(Math.random()*8):
-                activeAtk==='fuzz'?22+Math.round(Math.random()*12):
+                activeAtk==='fuzz'?30+Math.round(Math.random()*15):
+                activeAtk==='malfunc'?20+Math.round(Math.random()*10):
                 10+Math.round(Math.random()*6);
   const fps=activeAtk==='flood'?700+Math.round(Math.random()*300):
             activeAtk==='spoof'?55+Math.round(Math.random()*15):
-            activeAtk==='fuzz'?60+Math.round(Math.random()*20):
+            activeAtk==='fuzz'?80+Math.round(Math.random()*40):
+            activeAtk==='malfunc'?50+Math.round(Math.random()*20):
             45+Math.round(Math.random()*15);
 
   const bl=document.getElementById('m_busload');
@@ -266,7 +269,8 @@ function updateMetrics(){
     chartObj.data.datasets[0].data=[...busHistory];
     const atkColor=activeAtk==='flood'?'rgba(248,81,73,0.4)':
                    activeAtk==='spoof'?'rgba(188,140,255,0.4)':
-                   activeAtk==='fuzz'?'rgba(255,166,87,0.4)':'rgba(63,185,80,0.15)';
+                   activeAtk==='fuzz'?'rgba(255,166,87,0.4)':
+                   activeAtk==='malfunc'?'rgba(253,200,0,0.4)':'rgba(63,185,80,0.15)';
     chartObj.data.datasets[1].data=[...atkHistory];
     chartObj.data.datasets[1].backgroundColor=atkColor;
     chartObj.update('none');
@@ -299,12 +303,14 @@ function simTick(){
     }
     if(Math.random()<0.35) frames.push(makeSpoofFrame(simuTime));
   } else if(activeAtk==='fuzz'){
-    for(let i=0;i<2;i++){
-      const base=SONATA_DATA.normal[niIdx%SONATA_DATA.normal.length];
-      if(Math.random()<0.4) frames.push(makeFuzzFrame(base));
-      else frames.push(base);
-      niIdx++;
-    }
+    // Real fuzzy attack: inject actual fuzzy frames from OTIDS dataset
+    frames.push(SONATA_DATA.normal[niIdx%SONATA_DATA.normal.length]); niIdx++;
+    frames.push(SONATA_DATA.fuzzy[fiIdx%SONATA_DATA.fuzzy.length]); fiIdx++;
+    frames.push(SONATA_DATA.fuzzy[fiIdx%SONATA_DATA.fuzzy.length]); fiIdx++;
+  } else if(activeAtk==='malfunc'){
+    // Real malfunction attack: mix normal + malfunction frames targeting speed/cluster ECUs
+    frames.push(SONATA_DATA.normal[niIdx%SONATA_DATA.normal.length]); niIdx++;
+    frames.push(SONATA_DATA.malfunction[miIdx%SONATA_DATA.malfunction.length]); miIdx++;
   } else {
     for(let i=0;i<2;i++){
       frames.push(SONATA_DATA.normal[niIdx%SONATA_DATA.normal.length]);
@@ -343,7 +349,11 @@ function simTick(){
     addIDS(`0x0316 speed 이상값: ${spd} km/h (정상범위 초과)`,'spoof','crit');
   } else if(activeAtk==='fuzz' && now-lastAtkLog>1000){
     lastAtkLog=now;
-    addIDS('랜덤 바이트 패턴 감지 — CAN 프레임 데이터 무결성 실패','fuzz','warn');
+    const rndId=SONATA_DATA.fuzzy[fiIdx%SONATA_DATA.fuzzy.length].id;
+    addIDS(`미확인 ID 0x${rndId} 출현 — Fuzzy 주입 감지 (OTIDS 실제 데이터)`,'fuzz','warn');
+  } else if(activeAtk==='malfunc' && now-lastAtkLog>1200){
+    lastAtkLog=now;
+    addIDS('0x0316 / 0x043F ECU 이상 신호 감지 — Malfunction 공격 (실제 데이터)','malfunc','crit');
   }
 
   if(tick%8===0) updateMetrics();
@@ -354,17 +364,19 @@ function simTick(){
    ══════════════════════════════════════ */
 function setAtk(mode){
   activeAtk=mode;
-  ['none','flood','spoof','fuzz'].forEach(m=>{
-    document.getElementById('btn_'+m).className='atk-btn'+(m===mode?' sel-'+mode:'');
+  ['none','flood','spoof','fuzz','malfunc'].forEach(m=>{
+    const btn=document.getElementById('btn_'+m);
+    if(btn) btn.className='atk-btn'+(m===mode?' sel-'+mode:'');
   });
-  document.getElementById('atkDesc').textContent=ATK_DESCS[mode];
+  document.getElementById('atkDesc').textContent=ATK_DESCS[mode]||'';
   document.getElementById('atkDesc').style.color=
     mode==='flood'?'rgba(248,81,73,.8)':
     mode==='spoof'?'rgba(188,140,255,.8)':
-    mode==='fuzz'?'rgba(255,166,87,.8)':'var(--text3)';
+    mode==='fuzz'?'rgba(255,166,87,.8)':
+    mode==='malfunc'?'rgba(253,200,0,.8)':'var(--text3)';
   updateStatus();
   if(running && mode!=='none'){
-    addIDS('공격 시작: '+{flood:'DoS Flooding',spoof:'Speed Spoofing',fuzz:'Data Fuzzing'}[mode],'ids','crit');
+    addIDS('공격 시작: '+{flood:'DoS Flooding',spoof:'Speed Spoofing',fuzz:'Data Fuzzing (real)',malfunc:'Malfunction Injection (real)'}[mode],'ids','crit');
   }
   if(typeof vsUpdateMode==='function') vsUpdateMode(mode);
 }
@@ -374,7 +386,7 @@ function updateStatus(){
   const txt=document.getElementById('statusTxt');
   if(!running){dot.className='dot stopped';txt.textContent='Stopped';return;}
   if(activeAtk==='none'){dot.className='dot running';txt.textContent='Running — Normal';}
-  else{dot.className='dot atk';txt.textContent='Running — '+{flood:'Flooding',spoof:'Spoofing',fuzz:'Fuzzing'}[activeAtk];}
+  else{dot.className='dot atk';txt.textContent='Running — '+{flood:'Flooding',spoof:'Spoofing',fuzz:'Fuzzing',malfunc:'Malfunction'}[activeAtk];}
 }
 
 /* ══════════════════════════════════════
@@ -412,7 +424,7 @@ function stopSim(){
 
 function resetSim(){
   stopSim();
-  tick=0;simuTime=0;niIdx=0;aiIdx=0;
+  tick=0;simuTime=0;niIdx=0;aiIdx=0;fiIdx=0;miIdx=0;
   cntTotal=0;cntNormal=0;cntAtk=0;cntAnom=0;idsEventCount=0;
   shownRows=[];prevData={};seenIds.clear();capturedFrames=[];
   busHistory=Array(80).fill(0);atkHistory=Array(80).fill(0);

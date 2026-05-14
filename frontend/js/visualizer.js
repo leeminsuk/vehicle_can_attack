@@ -175,6 +175,10 @@ function vsUpdateMode(mode) {
     on('wl_eng',true);on('wl_str',true);on('wl_ids',true);
     if(carTxt){carTxt.textContent='FUZZING ACTIVE';carTxt.style.color='#ffa657';}
     if(spdCmp)spdCmp.classList.remove('show');
+  } else if(mode==='malfunc'){
+    on('wl_eng',true);on('wl_spd',true);on('wl_ids',true);
+    if(carTxt){carTxt.textContent='⚠ MALFUNCTION DETECTED';carTxt.style.color='#fdc800';}
+    if(spdCmp)spdCmp.classList.remove('show');
   }
 }
 
@@ -197,6 +201,7 @@ function vsDrawCarScene(ctx,W,H,mode,speed,ts){
   if(mode==='flood') vsDrawFloodEffect(ctx,W,H,ts);
   else if(mode==='spoof') vsDrawSpoofEffect(ctx,W,H,speed,ts);
   else if(mode==='fuzz') vsDrawFuzzEffect(ctx,W,H,ts);
+  else if(mode==='malfunc') vsDrawMalfuncEffect(ctx,W,H,ts);
 }
 
 function vsDrawRoad(ctx,W,H,speed,ts){
@@ -303,6 +308,34 @@ function vsDrawFuzzEffect(ctx,W,H,ts){
     ctx.fillRect(Math.random()*W,Math.random()*H,3+Math.random()*5,3+Math.random()*3);
   }
   ctx.fillStyle=`rgba(255,166,87,${0.06+Math.abs(Math.sin(ts*0.005))*0.07})`;ctx.fillRect(0,0,W,H);
+}
+
+function vsDrawMalfuncEffect(ctx,W,H,ts){
+  // Warning flash overlay — amber pulse
+  const pulse=0.08+Math.abs(Math.sin(ts*0.003))*0.12;
+  ctx.fillStyle=`rgba(253,200,0,${pulse})`;
+  ctx.fillRect(0,0,W,H);
+  // ECU glitch: horizontal warning lines on the car area
+  if(Math.random()<0.25){
+    const sy=H*0.3+Math.random()*H*0.4, sh=2+Math.random()*8;
+    ctx.fillStyle='rgba(253,200,0,0.3)';
+    ctx.fillRect(0,sy,W,sh);
+  }
+  // Speed gauge ghost — flickering tick marks
+  for(let i=0;i<8;i++){
+    if(Math.random()<0.4){
+      const x=W*0.15+Math.random()*W*0.15, y=H*0.1+Math.random()*H*0.8;
+      ctx.fillStyle=`rgba(253,200,0,${0.2+Math.random()*0.5})`;
+      ctx.fillRect(x,y,2+Math.random()*12,2);
+    }
+  }
+  // Warning symbol in corner
+  const t=Math.floor(ts/600)%2===0;
+  if(t){
+    ctx.font='bold 18px sans-serif';
+    ctx.fillStyle='rgba(253,200,0,0.8)';
+    ctx.fillText('⚠ ECU ERR',W-100,22);
+  }
 }
 
 function vsInit(){
