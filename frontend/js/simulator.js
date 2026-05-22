@@ -73,7 +73,14 @@ function makeFuzzFrame(base) {
 
 // Replay Attack: 이전 정상 프레임을 현재 타임스탬프로 재주입
 function makeReplayFrame(ts) {
-  const pool = replayStore.length > 0 ? replayStore : SONATA_DATA.normal;
+  // replayStore가 비어 있으면 현재 dynState 기반으로 프리워밍
+  if(replayStore.length === 0){
+    for(let i=0;i<20;i++){
+      const nid=NORMAL_ID_CYCLE[i%NORMAL_ID_CYCLE.length];
+      replayStore.push(makeDynFrame(nid, ts-10+i*0.5));
+    }
+  }
+  const pool = replayStore;
   const base = pool[riIdx % pool.length]; riIdx++;
   // 데이터는 "frozen" 상태 (변화 없음) — 현재 dynState와 불일치가 핵심
   return {...base, ts, label:'P', replayed:true};
@@ -359,12 +366,13 @@ function simTick(){
     frames.push(makeDynFrame(nid, simuTime));
     frames.push(SONATA_DATA.malfunction[miIdx%SONATA_DATA.malfunction.length]); miIdx++;
   } else if(activeAtk==='replay'){
-    // 정상 1개 + replay 주입 (40% 확률)
+    // 정상 2개 + replay 2개 (매 틱 확정 주입)
     for(let i=0;i<2;i++){
       const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
       frames.push(makeDynFrame(nid, simuTime));
     }
-    if(Math.random()<0.45) frames.push(makeReplayFrame(simuTime));
+    frames.push(makeReplayFrame(simuTime));
+    frames.push(makeReplayFrame(simuTime));
   } else if(activeAtk==='busoff'){
     // Bus-Off되지 않은 ECU만 정상 프레임 생성
     const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
@@ -486,6 +494,11 @@ function startSim(){
   document.getElementById('captureBtn').title='클릭하여 캡처 시작';
   updateStatus();
   addIDS('시뮬레이터 시작됨 — Sonata OTIDS 데이터셋 로드','sys','ok');
+  if(activeAtk!=='none'){
+    const names={flood:'DoS Flooding',spoof:'Speed Spoofing',fuzz:'Data Fuzzing (real)',
+                 malfunc:'Malfunction Injection (real)',replay:'Replay Attack',busoff:'Bus-Off Attack'};
+    addIDS('공격 모드 활성 상태로 시작: '+(names[activeAtk]||activeAtk),'ids','crit');
+  }
   simInterval=setInterval(simTick, 200);
 }
 
