@@ -137,6 +137,8 @@ function vsUpdateGauges(frame) {
   if(activeAtk==='flood') rpm = Math.random()*8000;
   else if(activeAtk==='spoof') rpm = 3000+speed*25+(Math.random()-0.5)*300;
   else if(activeAtk==='fuzz') rpm = speed*28+(Math.random()-0.5)*3000;
+  else if(activeAtk==='replay') rpm = vs_normalSpeed*27+(Math.random()-0.5)*100; // frozen-like
+  else if(activeAtk==='busoff') rpm = Math.max(0, speed*20+(Math.random()-0.5)*500); // degraded
   else rpm = speed*28+(Math.random()-0.5)*200;
   rpm = Math.max(0, Math.min(8000, rpm));
   vsUpdateRpm(rpm);
@@ -179,6 +181,14 @@ function vsUpdateMode(mode) {
     on('wl_eng',true);on('wl_spd',true);on('wl_ids',true);
     if(carTxt){carTxt.textContent='⚠ MALFUNCTION DETECTED';carTxt.style.color='#fdc800';}
     if(spdCmp)spdCmp.classList.remove('show');
+  } else if(mode==='replay'){
+    on('wl_ids',true);on('wl_spd',true);
+    if(carTxt){carTxt.textContent='🔁 REPLAY ATTACK';carTxt.style.color='#56d4d4';}
+    if(spdCmp)spdCmp.classList.remove('show');
+  } else if(mode==='busoff'){
+    on('wl_abs',true);on('wl_eng',true);on('wl_str',true);on('wl_bus',true);on('wl_ids',true);
+    if(carTxt){carTxt.textContent='💀 BUS-OFF ATTACK';carTxt.style.color='#ff7b72';}
+    if(spdCmp)spdCmp.classList.remove('show');
   }
 }
 
@@ -202,6 +212,8 @@ function vsDrawCarScene(ctx,W,H,mode,speed,ts){
   else if(mode==='spoof') vsDrawSpoofEffect(ctx,W,H,speed,ts);
   else if(mode==='fuzz') vsDrawFuzzEffect(ctx,W,H,ts);
   else if(mode==='malfunc') vsDrawMalfuncEffect(ctx,W,H,ts);
+  else if(mode==='replay') vsDrawReplayEffect(ctx,W,H,speed,ts);
+  else if(mode==='busoff') vsDrawBusOffEffect(ctx,W,H,ts);
 }
 
 function vsDrawRoad(ctx,W,H,speed,ts){
@@ -336,6 +348,83 @@ function vsDrawMalfuncEffect(ctx,W,H,ts){
     ctx.fillStyle='rgba(253,200,0,0.8)';
     ctx.fillText('⚠ ECU ERR',W-100,22);
   }
+}
+
+function vsDrawReplayEffect(ctx,W,H,speed,ts){
+  // Ghost car overlay: 과거 상태의 차량이 현재 차량과 분리
+  const ghostOffset=Math.sin(ts*0.002)*30;
+  ctx.globalAlpha=0.18+0.08*Math.abs(Math.sin(ts*0.003));
+  vsDrawCar(ctx,W/2,H/2+10+ghostOffset,'#56d4d4');
+  ctx.globalAlpha=1;
+
+  // Teal scan line: "rewind" 느낌의 수평 스캔
+  const scanY=((ts*0.04)%H);
+  const sg=ctx.createLinearGradient(0,scanY-15,0,scanY+15);
+  sg.addColorStop(0,'rgba(86,212,212,0)');
+  sg.addColorStop(0.5,'rgba(86,212,212,0.22)');
+  sg.addColorStop(1,'rgba(86,212,212,0)');
+  ctx.fillStyle=sg;ctx.fillRect(0,scanY-15,W,30);
+
+  // 점선 루프 화살표 효과
+  ctx.save();
+  ctx.strokeStyle='rgba(86,212,212,0.5)';ctx.lineWidth=1.5;
+  ctx.setLineDash([6,5]);ctx.lineDashOffset=-(ts*0.04)%11;
+  ctx.beginPath();ctx.moveTo(W*0.15,H*0.2);ctx.lineTo(W*0.85,H*0.2);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(W*0.85,H*0.8);ctx.lineTo(W*0.15,H*0.8);ctx.stroke();
+  ctx.setLineDash([]);ctx.restore();
+
+  // "REPLAY" 텍스트 워터마크
+  if(Math.floor(ts/500)%2===0){
+    ctx.font='bold 11px monospace';
+    ctx.fillStyle='rgba(86,212,212,0.7)';
+    ctx.fillText('◀ REPLAY',W-80,18);
+  }
+  ctx.fillStyle=`rgba(86,212,212,${0.04+Math.abs(Math.sin(ts*0.003))*0.04})`;
+  ctx.fillRect(0,0,W,H);
+}
+
+function vsDrawBusOffEffect(ctx,W,H,ts){
+  // ECU 격리: 빨간 X 마커들이 화면에 등장
+  const markers=[
+    {x:W*0.15,y:H*0.3,label:'EPS'},
+    {x:W*0.82,y:H*0.4,label:'ENG'},
+    {x:W*0.1, y:H*0.65,label:'TCM'},
+  ];
+  markers.forEach((m,i)=>{
+    const phase=ts*0.002+i*1.1;
+    if(Math.sin(phase)>0){
+      ctx.save();
+      ctx.strokeStyle='rgba(255,123,114,0.8)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(m.x-7,m.y-7);ctx.lineTo(m.x+7,m.y+7);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(m.x+7,m.y-7);ctx.lineTo(m.x-7,m.y+7);ctx.stroke();
+      ctx.fillStyle='rgba(255,123,114,0.75)';
+      ctx.font='bold 9px monospace';
+      ctx.fillText(m.label,m.x-10,m.y+18);
+      ctx.restore();
+    }
+  });
+
+  // 버스 단선 효과: 불규칙한 끊김 선
+  if(Math.random()<0.3){
+    ctx.save();
+    ctx.strokeStyle='rgba(255,123,114,0.6)';ctx.lineWidth=2;
+    const sy=H*0.2+Math.random()*H*0.6;
+    ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(W*0.3+Math.random()*W*0.4,sy);ctx.stroke();
+    ctx.restore();
+  }
+
+  // TEC 카운터 표시
+  const tec=Math.min(255,Math.round(80+((ts/1000)%25)*7));
+  ctx.font='bold 10px monospace';
+  ctx.fillStyle='rgba(255,123,114,0.85)';
+  ctx.fillText(`TEC: ${tec}/255`,6,18);
+
+  // 경고 펄스
+  const pulse=0.06+Math.abs(Math.sin(ts*0.004))*0.10;
+  ctx.fillStyle=`rgba(255,123,114,${pulse})`;
+  ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,123,114,0.5)';ctx.lineWidth=3;
+  if(Math.floor(ts/400)%2===0) ctx.strokeRect(2,2,W-4,H-4);
 }
 
 function vsInit(){

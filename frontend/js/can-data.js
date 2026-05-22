@@ -59,6 +59,137 @@ function decodeFrame(id, data) {
   }
 }
 
+/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+   REAL-TIME DYNAMIC VEHICLE STATE
+   Physical model: speed/RPM/steer change
+   every tick so CAN values are always live
+   \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
+const NORMAL_ID_CYCLE = [
+  '0316','0350','0130','0131','0140','0329',
+  '0545','0002','02A0','043F','0260','02B0',
+  '04F0','018F','04B1','0370','0440'
+];
+
+const dynState = {
+  speed:80.0, speedTarget:80.0,
+  steer:0.0,  steerTarget:0.0,
+  rpm:2200.0,
+  throttle:30,
+  epsL:128, epsR:128,
+  cgwCnt:0,
+  seq:0,
+};
+
+function tickDynState(atkMode) {
+  dynState.seq = (dynState.seq + 1) & 0xF;
+  dynState.cgwCnt = (dynState.cgwCnt + 1) & 0xFFFF;
+
+  if(atkMode === 'flood'){
+    // Flood: ECU\uac00 \uc751\ub2f5 \ubabb\ud574 \uc18d\ub3c4\uac12 \ub4e4\uc465\ub0a0\uc465
+    dynState.speed += (Math.random()-0.5)*8;
+    dynState.speed = Math.max(0, Math.min(200, dynState.speed));
+  } else if(atkMode === 'malfunc'){
+    // Malfunction: \uc18d\ub3c4 ECU \uc774\uc0c1\uac12 \uae09\ubcc0
+    if(Math.random()<0.15) dynState.speedTarget = Math.random()*250;
+    dynState.speed += (dynState.speedTarget - dynState.speed)*0.25;
+    dynState.speed = Math.max(0, Math.min(255, dynState.speed));
+  } else if(atkMode === 'busoff'){
+    // Bus-Off: ECU\ub4e4\uc774 \uaca9\ub9ac\ub418\uc5b4 \uac12 \uc5bc\uc5b4\ubd99\uac70\ub098 \ub9ac\uc14b
+    if(Math.random()<0.08) dynState.speed = Math.max(0, dynState.speed - 5);
+  } else {
+    // Normal / Spoof / Fuzz / Replay: \uc790\uc5f0\uc2a4\ub7ec\uc6b4 \uc8fc\ud589
+    if(Math.random()<0.02) dynState.speedTarget = 20 + Math.random()*140;
+    dynState.speed += (dynState.speedTarget - dynState.speed)*0.04;
+    dynState.speed = Math.max(0, Math.min(200, dynState.speed));
+  }
+
+  // RPM follows speed
+  const tRpm = 750 + dynState.speed*27 + (Math.random()-0.5)*300;
+  dynState.rpm += (tRpm - dynState.rpm)*0.08;
+  dynState.rpm = Math.max(750, Math.min(7500, dynState.rpm));
+
+  // Steering wander
+  if(Math.random()<0.04) dynState.steerTarget = (Math.random()-0.5)*80;
+  dynState.steer += (dynState.steerTarget - dynState.steer)*0.12;
+
+  // Throttle
+  dynState.throttle = Math.max(0,Math.min(100,
+    Math.round(15 + dynState.speed*0.45 + (Math.random()-0.5)*12)));
+
+  // EPS torque
+  dynState.epsL = Math.max(0,Math.min(255,
+    Math.round(128 + dynState.steer*0.4 + (Math.random()-0.5)*3)));
+  dynState.epsR = Math.max(0,Math.min(255,
+    Math.round(128 - dynState.steer*0.4 + (Math.random()-0.5)*3)));
+}
+
+function makeDynFrame(id, ts, label='R') {
+  const s = dynState;
+  const spdRaw = Math.round(s.speed / 0.01) & 0xFFFF;
+  const stRaw  = Math.round(Math.abs(s.steer) / 0.01) & 0xFFFF;
+  switch(id){
+    case '0316':
+      return {ts,id,dlc:8,data:[0x45,(spdRaw>>8)&0xFF,spdRaw&0xFF,0x09,
+        (stRaw>>8)&0xFF,stRaw&0xFF,0x00,0x7C],label};
+    case '0350':{
+      const rc=Math.round(s.rpm/62)&0xFF, chk=(rc^0xC1)&0xFF;
+      return {ts,id,dlc:8,data:[0x36,0x2B,rc,0x6C,0x74,0x00,0x00,chk],label};
+    }
+    case '0130':
+      return {ts,id,dlc:8,data:[s.epsL,0x80,0x00,0xFF,
+        (s.seq<<4)|0x08,0x80,s.seq,(s.epsL^s.seq)&0xFF],label};
+    case '0131':
+      return {ts,id,dlc:8,data:[s.epsR,0x7F,0x00,0x00,
+        0xB8,0x7F,s.seq,(s.epsR^s.seq^0x55)&0xFF],label};
+    case '0140':
+      return {ts,id,dlc:8,data:[0x00,0x00,0x00,0x00,
+        s.throttle,Math.round(s.throttle*0.9)&0xFF,s.seq,(s.throttle^0x33)&0xFF],label};
+    case '0329':{
+      const angH=Math.floor(Math.abs(s.steer)*256/180)&0xFF;
+      return {ts,id,dlc:8,data:[0xDC,angH,0x7F,0x14,0x11,0x20,0x00,0x14],label};
+    }
+    case '0545':{
+      const g=s.speed<5?0:s.speed<30?2:s.speed<60?3:s.speed<100?4:s.speed<150?5:6;
+      return {ts,id,dlc:8,data:[0xD8,Math.round(s.rpm/100)&0xFF,0x00,
+        0x80+g,0x00,0x00,0x00,0x00],label};
+    }
+    case '0002':{
+      const cH=(s.cgwCnt>>8)&0xFF, cL=s.cgwCnt&0xFF;
+      return {ts,id,dlc:8,data:[0x00,0x00,0x00,0x00,0x00,cH,cL,(cH^cL)&0xFF],label};
+    }
+    case '02A0':{
+      const v=[0x00,0x40,0x60,0x20][s.seq%4];
+      return {ts,id,dlc:8,data:[v,0x00,0x6E,0x1D,0xCC,0x04,0xE3,0x00],label};
+    }
+    case '043F':
+      return {ts,id,dlc:8,data:[0x10,0x40,0x60,0xFF,0x5A,(s.seq*8)&0xFF,0x08,0x00],label};
+    case '0260':{
+      const ev=Math.round(s.speed*0.28+28)&0xFF;
+      return {ts,id,dlc:8,data:[0x1D,ev,ev,0x30,0x00,0x90,
+        (s.seq*4)&0xFF,(s.seq*4+10)&0xFF],label};
+    }
+    case '02B0':
+      return {ts,id,dlc:5,data:[0xFF,0x7F,0x00,0x05,(s.seq*17)&0xFF],label};
+    case '04F0':
+      return {ts,id,dlc:8,data:[0x00,0x00,0x00,0x80,0x00,0x15,0x17,0x14],label};
+    case '018F':
+      return {ts,id,dlc:8,data:[0xFE,0x43,0x00,0x00,0x00,0x3D,0x00,0x00],label};
+    case '04B1':
+      return {ts,id,dlc:8,data:[0,0,0,0,0,0,0,0],label};
+    case '0370':
+      return {ts,id,dlc:8,data:[0x00,0x20,0x00,0x00,0x00,0x00,0x00,0x00],label};
+    case '0440':{
+      const tl=(0x80+(s.seq&0xF)*6)&0xFF;
+      return {ts,id,dlc:8,data:[0xFF,0x00,0x00,0x00,0xFF,tl,0x08,0x00],label};
+    }
+    default:{
+      const pool=SONATA_DATA.normal.filter(f=>f.id===id);
+      if(pool.length) return {...pool[s.seq%pool.length],ts,label};
+      return {ts,id,dlc:8,data:[0,0,0,0,0,0,0,0],label};
+    }
+  }
+}
+
 /* ══════════════════════════════════════
    VEHICLE STATE DEFINITIONS
    ══════════════════════════════════════ */

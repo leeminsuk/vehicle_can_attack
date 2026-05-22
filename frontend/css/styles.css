@@ -3,6 +3,7 @@
   --border:#30363d;--border2:#444c56;
   --text:#e6edf3;--text2:#8b949e;--text3:#6e7681;
   --green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;--purple:#bc8cff;--orange:#ffa657;
+  --teal:#56d4d4;--busoff:#ff7b72;
   --mono:'Courier New',monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -48,6 +49,8 @@ a{color:var(--blue);text-decoration:none}
 .atk-btn.sel-fuzz{border-color:var(--orange)!important;background:rgba(255,166,87,.1)!important;color:var(--orange)!important}
 .atk-btn.sel-none{border-color:var(--green)!important;background:rgba(63,185,80,.1)!important;color:var(--green)!important}
 .atk-btn.sel-malfunc{border-color:#fdc800!important;background:rgba(253,200,0,.1)!important;color:#fdc800!important}
+.atk-btn.sel-replay{border-color:var(--teal)!important;background:rgba(86,212,212,.1)!important;color:var(--teal)!important}
+.atk-btn.sel-busoff{border-color:var(--busoff)!important;background:rgba(255,123,114,.1)!important;color:var(--busoff)!important}
 .status-indicator{display:flex;align-items:center;gap:6px;font-size:12px;margin-left:auto}
 .dot{width:8px;height:8px;border-radius:50%}
 .dot.running{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 1s infinite}
@@ -91,6 +94,8 @@ a{color:var(--blue);text-decoration:none}
 .frame-table tr.row-t td{color:var(--red);background:rgba(248,81,73,.05)}
 .frame-table tr.row-spoof td{color:var(--purple);background:rgba(188,140,255,.06)}
 .frame-table tr.row-fuzz td{color:var(--orange);background:rgba(255,166,87,.06)}
+.frame-table tr.row-replay td{color:var(--teal);background:rgba(86,212,212,.06)}
+.frame-table tr.row-busoff td{color:var(--busoff);background:rgba(255,123,114,.06)}
 .frame-table tr.new-frame{animation:fadeSlide .25s ease}
 @keyframes fadeSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 .byte-cell{display:inline-block;font-family:var(--mono);font-size:11px}
@@ -103,6 +108,8 @@ a{color:var(--blue);text-decoration:none}
 .lbl-T{background:rgba(248,81,73,.15);color:var(--red)}
 .lbl-S{background:rgba(188,140,255,.15);color:var(--purple)}
 .lbl-F{background:rgba(255,166,87,.15);color:var(--orange)}
+.lbl-P{background:rgba(86,212,212,.15);color:var(--teal)}
+.lbl-B{background:rgba(255,123,114,.15);color:var(--busoff)}
 
 /* ── VEHICLE STATE ── */
 .veh-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;padding:10px 12px}
@@ -130,6 +137,8 @@ a{color:var(--blue);text-decoration:none}
 .diff-row.changed-row{background:rgba(248,81,73,.04)}
 .diff-row.spoof-row{background:rgba(188,140,255,.04)}
 .diff-row.fuzz-row{background:rgba(255,166,87,.04)}
+.diff-row.replay-row{background:rgba(86,212,212,.04)}
+.diff-row.busoff-row{background:rgba(255,123,114,.04)}
 .diff-head{background:var(--bg3);border-bottom:1px solid var(--border);padding:5px 12px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;display:grid;grid-template-columns:70px 90px 1fr 1fr 50px;gap:6px;font-weight:600}
 .delta-badge{font-size:10px;font-weight:700;font-family:var(--mono)}
 .delta-ok{color:var(--text3)}
@@ -152,6 +161,8 @@ a{color:var(--blue);text-decoration:none}
 .ids-tag.tag-fuzz{color:var(--orange)}
 .ids-tag.tag-ids{color:var(--blue)}
 .ids-tag.tag-sys{color:var(--text3)}
+.ids-tag.tag-replay{color:var(--teal)}
+.ids-tag.tag-busoff{color:var(--busoff)}
 
 /* ── SCROLLBARS ── */
 ::-webkit-scrollbar{width:6px;height:6px}

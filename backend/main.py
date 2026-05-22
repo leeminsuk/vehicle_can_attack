@@ -54,6 +54,9 @@ async def analyze(req: AnalyzeRequest):
         "flood": "DoS Flooding Attack",
         "spoof": "Speed Spoofing Attack",
         "fuzz": "Data Fuzzing Attack",
+        "malfunc": "Malfunction Injection Attack",
+        "replay": "Replay Attack",
+        "busoff": "Bus-Off Attack",
     }
     mode_label = mode_names.get(req.attackMode, req.attackMode)
     lang_instr = (
