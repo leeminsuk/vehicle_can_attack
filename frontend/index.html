@@ -55,6 +55,36 @@
       <span id="statusTxt" style="font-size:12px;color:var(--text2)">Stopped</span>
     </div>
   </div>
+  <!-- ── SPEED CONTROL ROW ── -->
+  <div class="ctrl-row speed-ctrl-row">
+    <button class="btn speed-auto" id="speedModeBtn" onclick="toggleManualControl()" title="AUTO: AI가 자동 주행 / MANUAL: 키보드·버튼으로 속도 제어">🤖 AUTO</button>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div>
+    <span style="font-size:11px;color:var(--text3);flex-shrink:0">목표 속도:</span>
+    <button class="speed-ctrl-btn" id="btnSpeedDown" onclick="changeManualSpeed(-10)" title="감속 -10 km/h (↓ / S)">−</button>
+    <div class="speed-target-display">
+      <span class="speed-target-val" id="speedTargetVal">80</span>
+      <span class="speed-target-unit">km/h</span>
+    </div>
+    <button class="speed-ctrl-btn" id="btnSpeedUp" onclick="changeManualSpeed(+10)" title="가속 +10 km/h (↑ / W)">+</button>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div>
+    <span style="font-size:11px;color:var(--text3);flex-shrink:0">프리셋:</span>
+    <button class="speed-preset-btn" id="preset_0"   onclick="setSpeedTarget(0)"   title="정지">STOP</button>
+    <button class="speed-preset-btn" id="preset_30"  onclick="setSpeedTarget(30)"  >30</button>
+    <button class="speed-preset-btn" id="preset_60"  onclick="setSpeedTarget(60)"  >60</button>
+    <button class="speed-preset-btn" id="preset_100" onclick="setSpeedTarget(100)" >100</button>
+    <button class="speed-preset-btn" id="preset_150" onclick="setSpeedTarget(150)" >150</button>
+    <button class="speed-preset-btn" id="preset_200" onclick="setSpeedTarget(200)" title="최고속">MAX</button>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div>
+    <div class="kbd-hint-wrap">
+      <span class="kbd-key" id="kbd_up">↑</span>
+      <span class="kbd-key" id="kbd_w">W</span>
+      <span class="kbd-label">가속</span>
+      <span class="kbd-sep">/</span>
+      <span class="kbd-key" id="kbd_down">↓</span>
+      <span class="kbd-key" id="kbd_s">S</span>
+      <span class="kbd-label">감속</span>
+    </div>
+  </div>
   <div id="atkDesc" style="font-size:11px;color:var(--text3);padding:2px 0">
     Normal 모드: Hyundai Sonata 실제 CAN 데이터 (R 레이블) 재생
   </div>

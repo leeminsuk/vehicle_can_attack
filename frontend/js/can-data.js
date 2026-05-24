@@ -102,7 +102,8 @@ function tickDynState(atkMode) {
     if(Math.random()<0.08) dynState.speed = Math.max(0, dynState.speed - 5);
   } else {
     // Normal / Spoof / Fuzz / Replay: \uc790\uc5f0\uc2a4\ub7ec\uc6b4 \uc8fc\ud589
-    if(Math.random()<0.02) dynState.speedTarget = 20 + Math.random()*140;
+    // manualControl\uc774 \ud65c\uc131\ud654\ub41c \uacbd\uc6b0 \uc790\ub3d9 speedTarget \ubcc0\uacbd \uc5b5\uc81c
+    if(!window.manualControl && Math.random()<0.02) dynState.speedTarget = 20 + Math.random()*140;
     dynState.speed += (dynState.speedTarget - dynState.speed)*0.04;
     dynState.speed = Math.max(0, Math.min(200, dynState.speed));
   }

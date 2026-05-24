@@ -42,6 +42,11 @@ let ipsStep=0;
 let ipsInterval=null;
 let ipsCurrentAtk='none';
 
+/* ── SPEED CONTROL STATE ── */
+let manualControl=false;     // window.manualControl 로 can-data.js에서 참조
+window.manualControl=false;  // 전역 노출
+const keyHeld={};            // up/down 키 홀드 상태
+
 const MAX_ROWS=18;
 let shownRows=[];
 
@@ -600,6 +605,8 @@ function startSim(){
   document.getElementById('captureBtn').title='클릭하여 캡처 시작';
   updateStatus();
   addIDS('시뮬레이터 시작됨 — Sonata OTIDS 데이터셋 로드','sys','ok');
+  updateManualBtnUI();
+  updateSpeedCtrlUI();
   if(activeAtk!=='none'){
     const names={flood:'DoS Flooding',spoof:'Speed Spoofing',fuzz:'Data Fuzzing (real)',
                  malfunc:'Malfunction Injection (real)',replay:'Replay Attack',busoff:'Bus-Off Attack'};
@@ -640,6 +647,15 @@ function resetSim(){
   suspensionPhase=0; masqTargetIdx=0;
   // IPS 초기화
   stopIPS(); hideIPS();
+  // Speed control 초기화
+  manualControl=false; window.manualControl=false;
+  dynState.speedTarget=80;
+  Object.keys(keyHeld).forEach(k=>{
+    if(keyHeld[k] && typeof keyHeld[k]==='number') clearInterval(keyHeld[k]);
+    delete keyHeld[k];
+  });
+  updateManualBtnUI();
+  updateSpeedCtrlUI();
   // dynState 초기화
   if(typeof dynState!=='undefined'){
     dynState.speed=80;dynState.speedTarget=80;
@@ -794,6 +810,143 @@ function initChart(){
       }
     }
   });
+}
+
+/* ══════════════════════════════════════
+   SPEED CONTROL — MANUAL / AUTO
+   ══════════════════════════════════════ */
+
+const SPEED_PRESETS=[0,30,60,100,150,200];
+
+function setSpeedTarget(kmh){
+  if(!manualControl) enableManualControl();
+  dynState.speedTarget=Math.max(0,Math.min(200,kmh));
+  updateSpeedCtrlUI();
+  if(running) addIDS(`속도 목표 설정: ${Math.round(dynState.speedTarget)} km/h`,'sys','info');
+}
+
+function changeManualSpeed(delta){
+  if(!manualControl) enableManualControl();
+  dynState.speedTarget=Math.max(0,Math.min(200,dynState.speedTarget+delta));
+  updateSpeedCtrlUI();
+  // 방향에 따라 숫자 색 변화 (가속=파랑, 감속=빨강)
+  flashSpeedTarget(delta>0?'accel':'brake');
+}
+
+function toggleManualControl(){
+  if(manualControl) disableManualControl();
+  else enableManualControl();
+}
+
+function enableManualControl(){
+  manualControl=true;
+  window.manualControl=true;
+  updateManualBtnUI();
+  updateSpeedCtrlUI();
+  if(running) addIDS('🎮 수동 속도 제어 활성화 — ↑/W 가속, ↓/S 감속, 프리셋 버튼으로 즉시 설정','sys','info');
+}
+
+function disableManualControl(){
+  manualControl=false;
+  window.manualControl=false;
+  // 현재 실제 속도로 target 동기화 (복귀 시 갑작스러운 변화 방지)
+  if(typeof dynState!=='undefined') dynState.speedTarget=dynState.speed;
+  updateManualBtnUI();
+  updateSpeedCtrlUI();
+  if(running) addIDS('🤖 자동 속도 제어 복원 — AI 물리 모델로 전환','sys','info');
+}
+
+function updateManualBtnUI(){
+  const btn=document.getElementById('speedModeBtn');
+  if(!btn) return;
+  btn.textContent=manualControl?'🎮 MANUAL':'🤖 AUTO';
+  btn.className='btn '+(manualControl?'speed-manual':'speed-auto');
+  // 프리셋 버튼 활성/비활성 (manual일 때 더 선명하게)
+  SPEED_PRESETS.forEach(v=>{
+    const el=document.getElementById('preset_'+v);
+    if(el) el.style.opacity=manualControl?'1':'0.6';
+  });
+  // +/- 버튼
+  const up=document.getElementById('btnSpeedUp');
+  const dn=document.getElementById('btnSpeedDown');
+  if(up) up.style.opacity=manualControl?'1':'0.5';
+  if(dn) dn.style.opacity=manualControl?'1':'0.5';
+}
+
+function updateSpeedCtrlUI(){
+  const val=document.getElementById('speedTargetVal');
+  if(val) val.textContent=Math.round(dynState.speedTarget||0);
+
+  // 프리셋 버튼 하이라이트
+  SPEED_PRESETS.forEach(v=>{
+    const btn=document.getElementById('preset_'+v);
+    if(btn) btn.classList.toggle('active', manualControl && Math.abs((dynState.speedTarget||0)-v)<8);
+  });
+}
+
+let flashTimer=null;
+function flashSpeedTarget(cls){
+  const el=document.getElementById('speedTargetVal');
+  if(!el) return;
+  el.className='speed-target-val '+cls;
+  if(flashTimer) clearTimeout(flashTimer);
+  flashTimer=setTimeout(()=>{ el.className='speed-target-val'; },350);
+}
+
+/* ── 키보드 이벤트 핸들러 ── */
+document.addEventListener('keydown',function(e){
+  // 텍스트 입력 중이면 무시
+  const tag=e.target.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+  if(!running) return;
+
+  const isUp=e.key==='ArrowUp'||e.key==='w'||e.key==='W';
+  const isDn=e.key==='ArrowDown'||e.key==='s'||e.key==='S';
+  if(!isUp&&!isDn) return;
+  e.preventDefault();
+
+  if(isUp&&!keyHeld.up){
+    keyHeld.up=true;
+    setKbdActive('up',true);
+    changeManualSpeed(+10);
+    keyHeld.upTimer=setInterval(()=>changeManualSpeed(+5),130);
+  }
+  if(isDn&&!keyHeld.down){
+    keyHeld.down=true;
+    setKbdActive('down',true);
+    changeManualSpeed(-10);
+    keyHeld.downTimer=setInterval(()=>changeManualSpeed(-5),130);
+  }
+});
+
+document.addEventListener('keyup',function(e){
+  const isUp=e.key==='ArrowUp'||e.key==='w'||e.key==='W';
+  const isDn=e.key==='ArrowDown'||e.key==='s'||e.key==='S';
+  if(isUp){
+    keyHeld.up=false;
+    setKbdActive('up',false);
+    if(keyHeld.upTimer){ clearInterval(keyHeld.upTimer); keyHeld.upTimer=null; }
+  }
+  if(isDn){
+    keyHeld.down=false;
+    setKbdActive('down',false);
+    if(keyHeld.downTimer){ clearInterval(keyHeld.downTimer); keyHeld.downTimer=null; }
+  }
+});
+
+function setKbdActive(dir,on){
+  // ↑/W 또는 ↓/S 배지 활성화
+  if(dir==='up'){
+    ['kbd_up','kbd_w'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.classList.toggle('pressed',on);
+    });
+  } else {
+    ['kbd_down','kbd_s'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.classList.toggle('pressed',on);
+    });
+  }
 }
 
 /* ══════════════════════════════════════
