@@ -1,19 +1,9 @@
 {
   "outputDirectory": "frontend",
-  "functions": {
-    "api/index.py": {
-      "runtime": "python3.12",
-      "maxDuration": 30
-    }
-  },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
+      "source": "/api/analyze",
+      "destination": "/api/index.py"
     }
   ]
 }
