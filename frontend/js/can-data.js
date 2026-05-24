@@ -36,6 +36,8 @@ const ECU_MAP={
   '0690':{name:'HUD',          desc:'Head-up display',         color:'#9ecbff'},
   '0000':{name:'ATTACKER',     desc:'Flooding frame (ID=0x0000)',color:'#f85149'},
   '7DF' :{name:'OBD-II',       desc:'Diagnostic broadcast',   color:'#bc8cff'},
+  '0236':{name:'ECS',          desc:'Electronic Control Suspension',color:'#e879f9'},
+  '05B0':{name:'AirSusp',      desc:'Air suspension control module',color:'#e879f9'},
 };
 
 function decodeFrame(id, data) {
@@ -55,6 +57,8 @@ function decodeFrame(id, data) {
     case '0002': return `cgw_cnt:${data[5].toString(16)}${data[6].toString(16).padStart(2,'0')}`;
     case '0545': return `tcm:${data[1].toString(16).toUpperCase()} gear_d:${data[3].toString(16).toUpperCase()}`;
     case '0000': return '\u26a0 FLOOD FRAME (Arb ID=0x0000)';
+    case '0236': return `damper:${data[0]} height:${((data[2]<<8)|data[1]).toFixed(0)}`;
+    case '05B0': return `airpres:${data[0]} height:${data[1]}`;
     default: return '';
   }
 }

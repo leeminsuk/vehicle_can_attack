@@ -189,6 +189,14 @@ function vsUpdateMode(mode) {
     on('wl_abs',true);on('wl_eng',true);on('wl_str',true);on('wl_bus',true);on('wl_ids',true);
     if(carTxt){carTxt.textContent='💀 BUS-OFF ATTACK';carTxt.style.color='#ff7b72';}
     if(spdCmp)spdCmp.classList.remove('show');
+  } else if(mode==='suspension'){
+    on('wl_abs',true);on('wl_str',true);on('wl_ids',true);
+    if(carTxt){carTxt.textContent='🚗 SUSPENSION ATTACK';carTxt.style.color='#e879f9';}
+    if(spdCmp)spdCmp.classList.remove('show');
+  } else if(mode==='masquerade'){
+    on('wl_ids',true);on('wl_spd',true);on('wl_eng',true);
+    if(carTxt){carTxt.textContent='🕵️ MASQUERADE ATTACK';carTxt.style.color='#a3e635';}
+    if(spdCmp)spdCmp.classList.remove('show');
   }
 }
 
@@ -214,6 +222,8 @@ function vsDrawCarScene(ctx,W,H,mode,speed,ts){
   else if(mode==='malfunc') vsDrawMalfuncEffect(ctx,W,H,ts);
   else if(mode==='replay') vsDrawReplayEffect(ctx,W,H,speed,ts);
   else if(mode==='busoff') vsDrawBusOffEffect(ctx,W,H,ts);
+  else if(mode==='suspension') vsDrawSuspensionEffect(ctx,W,H,ts);
+  else if(mode==='masquerade') vsDrawMasqueradeEffect(ctx,W,H,ts);
 }
 
 function vsDrawRoad(ctx,W,H,speed,ts){
@@ -425,6 +435,82 @@ function vsDrawBusOffEffect(ctx,W,H,ts){
   ctx.fillRect(0,0,W,H);
   ctx.strokeStyle='rgba(255,123,114,0.5)';ctx.lineWidth=3;
   if(Math.floor(ts/400)%2===0) ctx.strokeRect(2,2,W-4,H-4);
+}
+
+// ── Suspension Attack Effect ──
+function vsDrawSuspensionEffect(ctx, W, H, ts) {
+  const t = ts * 0.001;
+  // 차체 진동 시각화 — 물결 패턴
+  ctx.save();
+  const amp = 18 + Math.abs(Math.sin(t * 4.2)) * 12;
+  const freq = 5 + Math.sin(t * 0.8) * 2;
+  ctx.strokeStyle = 'rgba(232,121,249,0.5)';
+  ctx.lineWidth = 1.5;
+  // 지면 진동 파동
+  for(let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.globalAlpha = 0.6 - i * 0.15;
+    for(let x = 0; x < W; x += 2) {
+      const y = H * 0.82 + Math.sin((x / W * freq * Math.PI * 2) + t * 8 + i * 1.2) * amp * (1 - i * 0.2);
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+  }
+  ctx.globalAlpha = 1;
+
+  // 서스펜션 이상 데이터 표시
+  const damper = Math.round(127 + 127 * Math.sin(t * 5.5));
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = 'rgba(232,121,249,0.9)';
+  ctx.fillText(`ECS(0x0236)`, 6, 16);
+  ctx.fillText(`DAMPER: ${damper}/255`, 6, 30);
+  ctx.fillText(`RANGE!: 80~180`, 6, 44);
+
+  // 흔들림 효과 펄스
+  const pulse = 0.04 + Math.abs(Math.sin(t * 6)) * 0.08;
+  ctx.fillStyle = `rgba(232,121,249,${pulse})`;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+// ── Masquerade Attack Effect ──
+function vsDrawMasqueradeEffect(ctx, W, H, ts) {
+  const t = ts * 0.001;
+  ctx.save();
+
+  // 이중 ID 겹쳐 보이기 (투명도 페이드)
+  const alpha = 0.3 + Math.abs(Math.sin(t * 2.5)) * 0.4;
+
+  // 위장 레이어: 실제 ECU처럼 보이지만 살짝 다른 색
+  ctx.strokeStyle = `rgba(163,230,53,${alpha})`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+
+  // 가짜 ECU 신호선 - 세로 스캔라인
+  for(let i = 0; i < 6; i++) {
+    const x = (W * 0.1) + (i * W * 0.14) + Math.sin(t * 3 + i) * 6;
+    ctx.beginPath();
+    ctx.moveTo(x, H * 0.1);
+    ctx.lineTo(x, H * 0.9);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // 위장 정보 표시
+  const interval = (14 + Math.sin(t * 1.5) * 2).toFixed(1);
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = 'rgba(163,230,53,0.9)';
+  ctx.fillText(`0x0316 MASQ`, 6, 16);
+  ctx.fillText(`B0: 0x46 ≠ 0x45`, 6, 30);
+  ctx.fillText(`Δt: ${interval}ms (22ms)`, 6, 44);
+
+  // 가볍게 깜빡이는 녹색 오버레이
+  const gPulse = 0.03 + Math.abs(Math.sin(t * 3.5)) * 0.05;
+  ctx.fillStyle = `rgba(163,230,53,${gPulse})`;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.restore();
 }
 
 function vsInit(){
