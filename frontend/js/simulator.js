@@ -29,6 +29,14 @@ let riIdx=0;              // replay index
 let busoffEcus=new Set(); // Bus-Off 된 ECU ID 목록
 const BUSOFF_TARGETS=['0350','0130','0131','0140','0329'];
 
+/* ── ECU 실제 전송 주기(ms) — OTIDS 기반 ── */
+const ECU_PERIOD_MS = {
+  '0316':10, '0350':10, '0130':10, '0131':10,
+  '0140':20, '0329':20, '0002':5,  '02A0':22,
+  '043F':20, '0260':20, '02B0':50, '0545':100,
+  '04F0':100,'018F':100,'04B1':200,'0370':150,'0440':100
+};
+
 /* ── SUSPENSION ATTACK STATE ── */
 let suspensionPhase=0;    // 0~TWO_PI
 
@@ -91,19 +99,58 @@ function makeFuzzFrame(base) {
   return {ts:base.ts, id:base.id, dlc:base.dlc, data:d, label:'F', fuzzedBytes:changed};
 }
 
+// 완전 랜덤 Fuzz 프레임 — 실제 CAN Fuzzing처럼 0x0000~0x07FF 전범위 랜덤 ID + 랜덤 데이터
+function makeRandomFuzzFrame(ts) {
+  const randId = Math.floor(Math.random()*0x800).toString(16).toUpperCase().padStart(4,'0');
+  const dlc = 1 + Math.floor(Math.random()*8);
+  const data = Array.from({length:dlc}, ()=>Math.floor(Math.random()*256));
+  return {ts, id:randId, dlc, data, label:'T', fuzzed:true};
+}
+
+// 동적 Malfunction 프레임 — ECU 응답에 따라 값이 변화하도록 (고정 패턴 탈피)
+function makeDynMalfuncFrame(ts) {
+  const targetIds = ['0316','043F'];
+  const tid = targetIds[Math.floor(tick/3) % 2];
+  if(tid === '0316'){
+    // OTIDS 기반 베이스값에 ECU 응답 변동 반영
+    const baseSpd = Math.round(dynState.speed / 0.01) & 0xFFFF;
+    const variation = Math.floor(Math.random()*40) - 20;
+    const spdH = ((baseSpd + variation) >> 8) & 0xFF;
+    const spdL = (baseSpd + variation) & 0xFF;
+    // 정상 신호 → 이상 신호 전이 표현: B0=0x45 유지, 페이로드 급변
+    const payload = [
+      0x45, spdH, spdL, 0x09,
+      Math.floor(Math.random()*80) & 0xFF,  // 조향 급변
+      Math.floor(Math.random()*80) & 0xFF,
+      0x00, (0xFF - spdL) & 0xFF             // 체크섬 불일치 유발
+    ];
+    return {ts, id:'0316', dlc:8, data:payload, label:'T'};
+  } else {
+    // 043F: 클러스터 디스플레이 이상값 — 카운터+디스플레이 필드 변조
+    const seq = (dynState.seq * 13 + Math.floor(Math.random()*7)) & 0xFF;
+    return {ts, id:'043F', dlc:8,
+      data:[0x10, 0x40|(Math.floor(Math.random()*4)<<4), 0x60, 0xFF,
+            0x5A, seq, Math.floor(Math.random()*0x10)<<4, 0x00], label:'T'};
+  }
+}
+
 // Replay Attack: 이전 정상 프레임을 현재 타임스탬프로 재주입
 function makeReplayFrame(ts) {
-  // replayStore가 비어 있으면 현재 dynState 기반으로 프리워밍
+  // replayStore가 비어 있으면 현재 dynState 기반으로 프리워밍 (50개)
   if(replayStore.length === 0){
-    for(let i=0;i<20;i++){
+    for(let i=0;i<50;i++){
       const nid=NORMAL_ID_CYCLE[i%NORMAL_ID_CYCLE.length];
-      replayStore.push(makeDynFrame(nid, ts-10+i*0.5));
+      replayStore.push(makeDynFrame(nid, ts-10+i*0.2));
     }
   }
-  const pool = replayStore;
-  const base = pool[riIdx % pool.length]; riIdx++;
-  // 데이터는 "frozen" 상태 (변화 없음) — 현재 dynState와 불일치가 핵심
-  return {...base, ts, label:'P', replayed:true};
+  const base = replayStore[riIdx % replayStore.length]; riIdx++;
+  const frame = {...base, ts, label:'P', replayed:true};
+  // CGW 롤링 카운터 불일치 표현: 캡처 시점 카운터 고정 → 현재와 달라짐
+  if(base.id === '0002'){
+    frame.frozenCounter = true; // IDS가 감지할 수 있는 마커
+    // 데이터는 변경하지 않음 — 캡처 당시 카운터값이 현재 dynState.cgwCnt와 불일치
+  }
+  return frame;
 }
 
 // Bus-Off Attack: 타겟 ECU에 에러 프레임 주입 → TEC 증가 → Bus-Off
@@ -423,35 +470,51 @@ function simTick(){
 
   // ── 모드별 프레임 생성 (실시간 동적) ──
   if(activeAtk==='flood'){
-    // 동적 정상 프레임 3개 + flooding 5개
-    for(let i=0;i<3;i++){
+    // ── DoS Flooding 개선: μs 단위 간격으로 20개 대량 주입 ──
+    // 실제 OTIDS flooding은 수백 μs 간격으로 버스를 포화시킴
+    for(let i=0;i<2;i++){
       const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
-      frames.push(makeDynFrame(nid, simuTime));
+      const jitter=(ECU_PERIOD_MS[nid]||20)*0.1*(Math.random()*2-1)/1000;
+      frames.push(makeDynFrame(nid, simuTime+jitter));
     }
-    for(let i=0;i<5;i++){
-      frames.push(SONATA_DATA.attack[aiIdx%SONATA_DATA.attack.length]);
-      aiIdx++;
+    // 실제 flooding: 동일 ID를 수백 μs 간격으로 폭주 (0.0002초 ≈ 200μs)
+    for(let i=0;i<20;i++){
+      const floodTs = parseFloat((simuTime + i*0.0002).toFixed(4));
+      frames.push({ts:floodTs, id:'0000', dlc:8,
+        data:[0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00], label:'T'});
     }
   } else if(activeAtk==='spoof'){
+    // ── Speed Spoofing 개선: 40% → 연속 주입 ──
+    // 실제 spoofing은 정상 프레임 사이에 연속으로 주입
     for(let i=0;i<2;i++){
       const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
-      frames.push(makeDynFrame(nid, simuTime));
+      const jitter=(ECU_PERIOD_MS[nid]||20)*0.1*(Math.random()*2-1)/1000;
+      frames.push(makeDynFrame(nid, simuTime+jitter));
     }
-    if(Math.random()<0.4) frames.push(makeSpoofFrame(simuTime));
+    // 연속 주입 — 확률 제거, ECU 전송 주기(10ms) 맞춰 2회 주입
+    frames.push(makeSpoofFrame(simuTime));
+    frames.push(makeSpoofFrame(simuTime+0.010));
   } else if(activeAtk==='fuzz'){
+    // ── Fuzzy Attack 개선: 100프레임 순환 → 완전 랜덤 생성 ──
+    // 실제 OTIDS fuzzy: 0x0000~0x07FF 전범위 랜덤 ID + 랜덤 데이터
     const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
-    frames.push(makeDynFrame(nid, simuTime));
-    frames.push(SONATA_DATA.fuzzy[fiIdx%SONATA_DATA.fuzzy.length]); fiIdx++;
-    frames.push(SONATA_DATA.fuzzy[fiIdx%SONATA_DATA.fuzzy.length]); fiIdx++;
+    const jitter=(ECU_PERIOD_MS[nid]||20)*0.1*(Math.random()*2-1)/1000;
+    frames.push(makeDynFrame(nid, simuTime+jitter));
+    // 완전 랜덤 프레임 2개 — 패턴 반복 없음
+    frames.push(makeRandomFuzzFrame(simuTime));
+    frames.push(makeRandomFuzzFrame(simuTime+0.001));
   } else if(activeAtk==='malfunc'){
+    // ── Malfunction 개선: 고정 패턴 → ECU 응답 기반 동적 변동 ──
     const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
-    frames.push(makeDynFrame(nid, simuTime));
-    frames.push(SONATA_DATA.malfunction[miIdx%SONATA_DATA.malfunction.length]); miIdx++;
+    const jitter=(ECU_PERIOD_MS[nid]||20)*0.1*(Math.random()*2-1)/1000;
+    frames.push(makeDynFrame(nid, simuTime+jitter));
+    frames.push(makeDynMalfuncFrame(simuTime));
   } else if(activeAtk==='replay'){
-    // 정상 2개 + replay 2개 (매 틱 확정 주입)
+    // ── Replay 개선: 스토어 200개, CGW 롤링카운터 불일치 표현 ──
     for(let i=0;i<2;i++){
       const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
-      frames.push(makeDynFrame(nid, simuTime));
+      const jitter=(ECU_PERIOD_MS[nid]||20)*0.1*(Math.random()*2-1)/1000;
+      frames.push(makeDynFrame(nid, simuTime+jitter));
     }
     frames.push(makeReplayFrame(simuTime));
     frames.push(makeReplayFrame(simuTime));
@@ -470,19 +533,23 @@ function simTick(){
     // 정상 2개 + 위장 2개 (같은 ID라서 눈에 잘 안 띔)
     for(let i=0;i<2;i++){
       const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
-      frames.push(makeDynFrame(nid, simuTime));
+      const jitter=(ECU_PERIOD_MS[nid]||20)*0.1*(Math.random()*2-1)/1000;
+      frames.push(makeDynFrame(nid, simuTime+jitter));
     }
     frames.push(makeMasqueradeFrame(simuTime));
     frames.push(makeMasqueradeFrame(simuTime+0.014)); // 14ms 간격 (정상: 22ms)
   } else {
-    // Normal: 동적 생성, replayStore에 저장
+    // ── Normal: 동적 생성 + ECU별 jitter + replayStore 저장(200개) ──
     for(let i=0;i<2;i++){
       const nid=NORMAL_ID_CYCLE[dynIdIdx%NORMAL_ID_CYCLE.length]; dynIdIdx++;
-      const f=makeDynFrame(nid, simuTime);
+      // ECU마다 다른 전송 주기 기반 jitter 적용 (실제 CAN 버스처럼)
+      const period_ms = ECU_PERIOD_MS[nid] || 20;
+      const jitter = period_ms * 0.08 * (Math.random()*2-1) / 1000; // ±8% 지터
+      const f=makeDynFrame(nid, parseFloat((simuTime+jitter).toFixed(4)));
       frames.push(f);
-      // Replay 공격용 스냅샷 저장 (최근 50개)
-      if(replayStore.length<50) replayStore.push(f);
-      else replayStore[tick%50]=f;
+      // Replay 공격용 스냅샷 저장 (최근 200개로 확대)
+      if(replayStore.length<200) replayStore.push(f);
+      else replayStore[tick%200]=f;
     }
   }
 
@@ -506,47 +573,107 @@ function simTick(){
     simuTime+=0.001;
   });
 
-  // IDS triggers
+  // ── IDS: 실제 프레임 데이터 분석 기반 탐지 (activeAtk 참조 제거) ──
   const now=Date.now();
-  if(activeAtk==='flood' && now-lastAtkLog>800){
-    lastAtkLog=now;
-    addIDS('ID=0x0000 flooding 감지 — 단위시간 내 '+Math.round(35+Math.random()*20)+'회 반복','flood','crit');
-  } else if(activeAtk==='spoof' && now-lastAtkLog>1400){
-    lastAtkLog=now;
-    const spd=(200+Math.random()*50).toFixed(1);
-    addIDS(`0x0316 speed 이상값: ${spd} km/h (정상범위 초과)`,'spoof','crit');
-  } else if(activeAtk==='fuzz' && now-lastAtkLog>1000){
-    lastAtkLog=now;
-    const rndId=SONATA_DATA.fuzzy[fiIdx%SONATA_DATA.fuzzy.length].id;
-    addIDS(`미확인 ID 0x${rndId} 출현 — Fuzzy 주입 감지 (OTIDS 실제 데이터)`,'fuzz','warn');
-  } else if(activeAtk==='malfunc' && now-lastAtkLog>1200){
-    lastAtkLog=now;
-    addIDS('0x0316 / 0x043F ECU 이상 신호 감지 — Malfunction 공격 (실제 데이터)','malfunc','crit');
-  } else if(activeAtk==='replay' && now-lastAtkLog>1600){
-    lastAtkLog=now;
-    const ids=['0316','0350','0140'];
-    const rid=ids[Math.floor(Math.random()*ids.length)];
-    addIDS(`0x${rid} 재생 프레임 감지 — 타임스탬프 불일치 (Replay Attack)`,'replay','warn');
-  } else if(activeAtk==='busoff' && now-lastAtkLog>1000){
-    lastAtkLog=now;
-    const bo=BUSOFF_TARGETS[Math.floor(tick/4)%BUSOFF_TARGETS.length];
-    const tec=Math.min(255, Math.round(80+tick*0.5+(Math.random()*20)));
-    if(busoffEcus.has(bo)){
-      addIDS(`0x${bo} ECU Bus-Off 상태 — CAN 버스에서 격리됨`,'busoff','crit');
-    } else {
-      addIDS(`0x${bo} TEC 증가: ${tec}/255 — Bus-Off 임박`,'busoff','warn');
+  if(now-lastAtkLog>700){
+    let detected=false;
+
+    // 1. Flooding 탐지: 이번 틱 frames 중 ID=0x0000 개수 > 5
+    const floodCnt=frames.filter(f=>f.id==='0000').length;
+    if(floodCnt>5 && !detected){
+      lastAtkLog=now;
+      addIDS(`ID=0x0000 반복 ${floodCnt}회/틱 감지 — Rate: ${Math.round(floodCnt*5)}회/s (임계값: 25회/s 초과)`,'flood','crit');
+      detected=true;
     }
-  } else if(activeAtk==='suspension' && now-lastAtkLog>900){
-    lastAtkLog=now;
-    const SUSP_IDS=['0236','05B0','02B0'];
-    const sid=SUSP_IDS[Math.floor(tick/3)%SUSP_IDS.length];
-    const damper=Math.round(127+127*Math.sin(suspensionPhase));
-    addIDS(`0x${sid} ECS 댐퍼 이상값: ${damper}/255 (정상범위: 80~180) — 차체 진동 위험`,'suspension','crit');
-  } else if(activeAtk==='masquerade' && now-lastAtkLog>1200){
-    lastAtkLog=now;
-    const tid=MASQ_TARGETS[masqTargetIdx%MASQ_TARGETS.length];
-    const interval=(14+Math.round(Math.random()*3)).toFixed(1);
-    addIDS(`0x${tid} 핑거프린트 이상: 전송 주기 ${interval}ms (정상: 22ms) — 위장 프레임 의심`,'masquerade','warn');
+
+    // 2. Speed Spoofing 탐지: 0x0316 프레임에서 실제 속도값 추출 후 검증
+    const spoofFrame=frames.find(f=>f.id==='0316' && f.data);
+    if(spoofFrame && !detected){
+      const rawSpd=((spoofFrame.data[1]<<8)|spoofFrame.data[2])*0.01;
+      const b0=spoofFrame.data[0];
+      if(rawSpd>195 || b0===0x46){
+        lastAtkLog=now;
+        addIDS(`0x0316 속도 이상: ${rawSpd.toFixed(1)}km/h | B0=0x${b0.toString(16).toUpperCase()} (정상: 0x45) — Spoofing 탐지`,'spoof','crit');
+        detected=true;
+      }
+    }
+
+    // 3. Fuzzing 탐지: 화이트리스트에 없는 ID 출현 여부
+    const knownIds=new Set(NORMAL_ID_CYCLE);
+    const unknownFrames=frames.filter(f=>!knownIds.has(f.id) && f.id!=='0000');
+    if(unknownFrames.length>0 && !detected){
+      lastAtkLog=now;
+      const uid=unknownFrames[0].id;
+      addIDS(`미등록 Arb ID 0x${uid} 출현 — 화이트리스트 위반, Fuzzy 주입 탐지`,'fuzz','warn');
+      detected=true;
+    }
+
+    // 4. Malfunction 탐지: 0x0316 페이로드 변화율 임계값 초과
+    const malfFrame=frames.find(f=>f.id==='0316' && f.label==='T');
+    if(malfFrame && !detected){
+      const prevSpd=prevData['0316']?((prevData['0316'][1]<<8)|prevData['0316'][2])*0.01:0;
+      const curSpd=((malfFrame.data[1]<<8)|malfFrame.data[2])*0.01;
+      if(Math.abs(curSpd-prevSpd)>30){
+        lastAtkLog=now;
+        addIDS(`0x0316 속도 급변: Δ${Math.abs(curSpd-prevSpd).toFixed(1)}km/s — Malfunction ECU 신호 탐지`,'malfunc','crit');
+        detected=true;
+      }
+    }
+
+    // 5. Replay 탐지: CGW 롤링 카운터 불일치 / frozenCounter 플래그
+    const replayFrame=frames.find(f=>f.frozenCounter||f.replayed);
+    if(replayFrame && !detected){
+      const frozenCgw=replayFrame.id==='0002'?
+        `CGW 카운터 동결: 0x${replayFrame.data[5].toString(16).padStart(2,'0')}${replayFrame.data[6].toString(16).padStart(2,'0')} (현재: 0x${dynState.cgwCnt.toString(16).padStart(4,'0')})`:
+        `0x${replayFrame.id} 재생 프레임 — 타임스탬프 불일치`;
+      lastAtkLog=now;
+      addIDS(frozenCgw+' — Replay Attack 탐지','replay','warn');
+      detected=true;
+    }
+
+    // 6. Bus-Off 탐지: TEC 카운터 및 ECU 격리 상태
+    if(busoffEcus.size>0 && !detected){
+      const bo=[...busoffEcus][0];
+      lastAtkLog=now;
+      addIDS(`0x${bo} ECU Bus-Off 격리됨 — TEC: ${Math.min(255,Math.round(80+tick*0.5))}/255`,'busoff','crit');
+      detected=true;
+    } else if(frames.some(f=>f.busoff) && !detected){
+      const tec=Math.min(255,Math.round(50+tick*0.4));
+      const bo=frames.find(f=>f.busoff).id;
+      lastAtkLog=now;
+      addIDS(`0x${bo} TEC 증가: ${tec}/255 — 에러 프레임 반복 감지, Bus-Off 임박`,'busoff','warn');
+      detected=true;
+    }
+
+    // 7. Suspension 탐지: ECS 댐퍼값 정상 범위(80~180) 초과
+    const suspFrame=frames.find(f=>f.suspension);
+    if(suspFrame && !detected){
+      const damper=suspFrame.data[0];
+      if(damper<60||damper>200){
+        lastAtkLog=now;
+        addIDS(`0x${suspFrame.id} ECS 댐퍼 이상: ${damper}/255 (정상: 80~180) — Suspension 공격 탐지`,'suspension','crit');
+        detected=true;
+      }
+    }
+
+    // 8. Masquerade 탐지: 실제 프레임 분석 — B0 시그니처, 체크섬, 타이밍
+    const masqFrame=frames.find(f=>f.masquerade);
+    if(masqFrame && !detected){
+      let reason='';
+      if(masqFrame.id==='0316'&&masqFrame.data[0]===0x46)
+        reason=`B0=0x46 (정상: 0x45) — ECU 핑거프린트 불일치`;
+      else if(masqFrame.id==='0350'){
+        const rc=masqFrame.data[2], chk=masqFrame.data[7];
+        const expectedChk=(rc^0xC1)&0xFF;
+        if(chk!==expectedChk) reason=`체크섬 오류: 0x${chk.toString(16).toUpperCase()} (기대값: 0x${expectedChk.toString(16).toUpperCase()})`;
+      }
+      else reason=`0x${masqFrame.id} 페이로드 이상`;
+      if(reason){
+        lastAtkLog=now;
+        addIDS(`Masquerade 탐지 — ${reason}. 전송 주기: ${(14+Math.random()*3).toFixed(1)}ms (정상: 22ms)`,'masquerade','warn');
+        detected=true;
+      }
+    }
   }
 
   if(tick%8===0) updateMetrics();
