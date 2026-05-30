@@ -14,13 +14,13 @@ let chartObj=null;
 let simuTime=0;
 let capturedFrames=[];
 
-/* ── CAPTURE STATE (15초 자동) ── */
+/* ── CAPTURE STATE (60초 자동) ── */
 let isCapturing=false;
 let captureBuffer=[];
 let captureStartTs=0;
 let captureTimerId=null;
 let captureCountdownId=null;
-const CAPTURE_DURATION_SEC=15;
+const CAPTURE_DURATION_SEC=60;
 
 /* ── DYNAMIC & ATTACK STATE ── */
 let dynIdIdx=0;           // NORMAL_ID_CYCLE 인덱스
@@ -406,24 +406,27 @@ function addIDS(msg, type='ids', cls='info'){
    METRICS UPDATE
    ══════════════════════════════════════ */
 function updateMetrics(){
-  const busLoad=activeAtk==='flood'?72+Math.round(Math.random()*20):
-                activeAtk==='spoof'?18+Math.round(Math.random()*8):
-                activeAtk==='fuzz'?30+Math.round(Math.random()*15):
-                activeAtk==='malfunc'?20+Math.round(Math.random()*10):
-                activeAtk==='replay'?14+Math.round(Math.random()*8):
-                activeAtk==='busoff'?5+Math.round(Math.random()*8):
-                activeAtk==='suspension'?35+Math.round(Math.random()*20): // 고속 주입
-                activeAtk==='masquerade'?15+Math.round(Math.random()*8): // 정상처럼 보임
-                10+Math.round(Math.random()*6);
-  const fps=activeAtk==='flood'?700+Math.round(Math.random()*300):
-            activeAtk==='spoof'?55+Math.round(Math.random()*15):
-            activeAtk==='fuzz'?80+Math.round(Math.random()*40):
-            activeAtk==='malfunc'?50+Math.round(Math.random()*20):
-            activeAtk==='replay'?48+Math.round(Math.random()*12):
-            activeAtk==='busoff'?15+Math.round(Math.random()*10):
-            activeAtk==='suspension'?90+Math.round(Math.random()*30): // 빠른 주입
-            activeAtk==='masquerade'?50+Math.round(Math.random()*10): // 정상 수준
-            45+Math.round(Math.random()*15);
+  // Bus Load — 살아있는 jitter(±2%) 포함, 500Kbps 기준 실제 비율
+  const _jit=()=>Math.round((Math.random()-0.5)*4); // ±2% noise
+  const busLoad=Math.max(1, (activeAtk==='flood'?75+Math.round(Math.random()*18):
+                activeAtk==='spoof'?22+Math.round(Math.random()*10):
+                activeAtk==='fuzz'?38+Math.round(Math.random()*16):
+                activeAtk==='malfunc'?26+Math.round(Math.random()*12):
+                activeAtk==='replay'?18+Math.round(Math.random()*10):
+                activeAtk==='busoff'?8+Math.round(Math.random()*10):
+                activeAtk==='suspension'?42+Math.round(Math.random()*22): // 고속 주입
+                activeAtk==='masquerade'?20+Math.round(Math.random()*10): // 정상처럼 보임
+                14+Math.round(Math.random()*8)) + _jit());
+  // FPS — 실제 OTIDS/500Kbps CAN 데이터 수준 (정상 ~1.8k, flood ~7k frames/sec)
+  const fps=activeAtk==='flood'?6800+Math.round(Math.random()*1400):
+            activeAtk==='spoof'?2100+Math.round(Math.random()*300):
+            activeAtk==='fuzz'?3400+Math.round(Math.random()*600):
+            activeAtk==='malfunc'?2600+Math.round(Math.random()*500):
+            activeAtk==='replay'?1900+Math.round(Math.random()*400):
+            activeAtk==='busoff'?650+Math.round(Math.random()*350):
+            activeAtk==='suspension'?3900+Math.round(Math.random()*800): // 빠른 주입
+            activeAtk==='masquerade'?1850+Math.round(Math.random()*250): // 정상 수준
+            1800+Math.round(Math.random()*350);
 
   const bl=document.getElementById('m_busload');
   bl.textContent=busLoad+'%';
@@ -469,7 +472,7 @@ function updateMetricsChartColor(atkColor) {
    ══════════════════════════════════════ */
 function simTick(){
   tick++;
-  simuTime+=0.2;
+  simuTime+=0.1; // 100ms tick — 실시간 1× 동기
   const frames=[];
 
   // 동적 물리 상태 업데이트
@@ -683,7 +686,7 @@ function simTick(){
     }
   }
 
-  if(tick%8===0) updateMetrics();
+  if(tick%3===0) updateMetrics();
 }
 
 /* ══════════════════════════════════════
@@ -746,7 +749,8 @@ function startSim(){
                  malfunc:'Malfunction Injection (real)',replay:'Replay Attack',busoff:'Bus-Off Attack'};
     addIDS('공격 모드 활성 상태로 시작: '+(names[activeAtk]||activeAtk),'ids','crit');
   }
-  simInterval=setInterval(simTick, 200);
+  // 100ms 주기 — 실제 CAN 흐름을 더 빠르게 시뮬레이션 (2× faster)
+  simInterval=setInterval(simTick, 100);
 }
 
 function stopSim(){
@@ -818,12 +822,12 @@ function resetSim(){
 }
 
 /* ══════════════════════════════════════
-   CAPTURE & EXPORT (15초 자동)
+   CAPTURE & EXPORT (60초 자동)
    ══════════════════════════════════════ */
 function toggleCapture(){
   if(!running) return;
   if(!isCapturing){
-    // ── 캡처 시작 (15초 자동) ──
+    // ── 캡처 시작 (60초 자동) ──
     isCapturing=true;
     captureBuffer=[];
     captureStartTs=simuTime;
