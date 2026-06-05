@@ -42,6 +42,31 @@ let ipsStep=0;
 let ipsInterval=null;
 let ipsCurrentAtk='none';
 
+/* ── AUTO-IPS (streaming CAN IPS, baejun10/mobility-anomaly-detection feature/ips-sim 영감) ──
+   Normal 직후 4개 공격(Flooding/Spoofing/Fuzzing/Malfunction)은 row-level streaming
+   IPS가 자동 탐지·차단하는 컨셉. 버튼을 누르지 않아도 공격 시작 후 15초 뒤 IPS 파이프라인이
+   자동 발동되어 Normal 상태로 복귀한다. */
+const AUTO_IPS_ATTACKS=['flood','spoof','fuzz','malfunc'];
+const AUTO_IPS_DELAY_MS=15000;
+let autoIpsTimerId=null;
+let autoIpsCountdownId=null;
+let autoIpsDeadline=0;
+let autoIpsForAtk='none';
+// streaming row-level drop visualization
+let ipsFiltering=false;          // true이면 신규/기존 공격 라벨 프레임을 즉시 drop 처리
+let ipsFilterAtk='none';         // 현재 filtering 대상 공격 모드 (flood/spoof/fuzz/malfunc)
+// 모드별 drop 대상 라벨 집합 — makeRandomFuzzFrame은 'T' 라벨을 쓰기 때문에 fuzz도 'T'를 포함
+const ATK_LABEL_SETS={
+  flood:new Set(['T']),
+  spoof:new Set(['S']),
+  fuzz:new Set(['T','F']),
+  malfunc:new Set(['T']),
+};
+function isDropTarget(label, mode){
+  const s=ATK_LABEL_SETS[mode]; return !!(s && s.has(label));
+}
+let ipsDropQueueTimers=[];       // 진행 중인 setTimeout id 모음 (취소용)
+
 /* ── SPEED CONTROL STATE ── */
 let manualControl=false;     // window.manualControl 로 can-data.js에서 참조
 window.manualControl=false;  // 전역 노출
@@ -220,14 +245,30 @@ function buildDiffTable(){
    ══════════════════════════════════════ */
 function addFrame(frame){
   const tbody=document.getElementById('frameTbody');
+  // streaming row-level pass/drop — IPS filter 활성 시 대상 공격 라벨이면 dropped 마크 후 자동 제거
+  if(ipsFiltering && isDropTarget(frame.label, ipsFilterAtk)){
+    frame.dropped=true;
+    const t1=setTimeout(()=>{
+      frame.fading=true;
+      rerenderFrameTable();
+      const t2=setTimeout(()=>{
+        const idx=shownRows.indexOf(frame);
+        if(idx>=0) shownRows.splice(idx,1);
+        rerenderFrameTable();
+      }, 320);
+      ipsDropQueueTimers.push(t2);
+    }, 280);
+    ipsDropQueueTimers.push(t1);
+  }
   shownRows.unshift(frame);
   if(shownRows.length>MAX_ROWS)shownRows.pop();
 
   tbody.innerHTML=shownRows.map(f=>{
     const isAtk=f.label==='T'||f.label==='S'||f.label==='F'||f.label==='P'||f.label==='B'||f.label==='U'||f.label==='M';
-    const rowCls=f.label==='T'?'row-t':f.label==='S'?'row-spoof':f.label==='F'?'row-fuzz':
+    const baseRowCls=f.label==='T'?'row-t':f.label==='S'?'row-spoof':f.label==='F'?'row-fuzz':
                  f.label==='P'?'row-replay':f.label==='B'?'row-busoff':
                  f.label==='U'?'row-suspension':f.label==='M'?'row-masquerade':'row-r new-frame';
+    const rowCls=baseRowCls+(f.dropped?' row-dropped':'')+(f.fading?' row-fading':'');
     const prev=prevData[f.id];
     const changed=prev ? f.data.map((b,i)=>b!==prev[i]?i:-1).filter(i=>i>=0) : [];
     const atkCls=f.label==='F'?'fuzz':f.label==='S'?'injected':
@@ -555,6 +596,129 @@ function simTick(){
 /* ══════════════════════════════════════
    ATK MODE
    ══════════════════════════════════════ */
+function clearAutoIps(){
+  if(autoIpsTimerId){ clearTimeout(autoIpsTimerId); autoIpsTimerId=null; }
+  if(autoIpsCountdownId){ clearInterval(autoIpsCountdownId); autoIpsCountdownId=null; }
+  autoIpsForAtk='none';
+  autoIpsDeadline=0;
+}
+
+function clearIpsDropQueue(){
+  ipsDropQueueTimers.forEach(id=>clearTimeout(id));
+  ipsDropQueueTimers=[];
+}
+
+function stopFrameFiltering(){
+  clearIpsDropQueue();
+  ipsFiltering=false;
+  ipsFilterAtk='none';
+  // 남아있는 dropped 플래그도 정리해서 다음 cycle에 영향 없게
+  shownRows.forEach(f=>{ if(f.dropped) f.fading=true; });
+}
+
+/* Start streaming row-level drop visualization for the given attack mode.
+   - 기존 화면에 떠있는 공격 라벨 프레임을 100ms 간격으로 하나씩 dropped 처리 후
+     400ms 뒤 shownRows에서 제거
+   - 동시에 ipsFiltering 플래그를 켜서 신규 유입 공격 프레임도 즉시 drop 처리
+   - addFrame에서 ipsFiltering이 켜져있으면 공격 라벨을 dropped로 마크 후 자동 제거 */
+function startFrameFiltering(mode){
+  if(!AUTO_IPS_ATTACKS.includes(mode)) return;
+  clearIpsDropQueue();
+  ipsFiltering=true;
+  ipsFilterAtk=mode;
+  // 기존 표에 있는 공격 라벨 프레임들을 sweep
+  const victims=shownRows.filter(f=>isDropTarget(f.label, mode) && !f.dropped);
+  victims.forEach((f, i)=>{
+    const t1=setTimeout(()=>{
+      f.dropped=true;
+      // 화면 갱신은 가벼운 render 호출로 — frame 추가 없이 tbody만 다시 그림
+      rerenderFrameTable();
+      const t2=setTimeout(()=>{
+        f.fading=true;
+        rerenderFrameTable();
+        const t3=setTimeout(()=>{
+          const idx=shownRows.indexOf(f);
+          if(idx>=0) shownRows.splice(idx,1);
+          rerenderFrameTable();
+        }, 350);
+        ipsDropQueueTimers.push(t3);
+      }, 350);
+      ipsDropQueueTimers.push(t2);
+    }, 80 + i*70);
+    ipsDropQueueTimers.push(t1);
+  });
+}
+
+/* 가벼운 재렌더 — addFrame 본체와 동일한 마크업이지만 push 없이 다시 그림.
+   shownRows를 새로 고치는 다양한 경로에서 호출 가능. */
+function rerenderFrameTable(){
+  const tbody=document.getElementById('frameTbody');
+  if(!tbody) return;
+  // addFrame과 동일한 매핑 함수를 재사용하기 위해 fake-render: shownRows를 그대로 두고 tbody만 그림
+  // 가장 안전한 방법: 길이가 그대로인 가짜 addFrame 호출 대신 직접 markup 생성
+  tbody.innerHTML=shownRows.map(f=>{
+    const isAtk=f.label==='T'||f.label==='S'||f.label==='F'||f.label==='P'||f.label==='B'||f.label==='U'||f.label==='M';
+    const baseRowCls=f.label==='T'?'row-t':f.label==='S'?'row-spoof':f.label==='F'?'row-fuzz':
+                 f.label==='P'?'row-replay':f.label==='B'?'row-busoff':
+                 f.label==='U'?'row-suspension':f.label==='M'?'row-masquerade':'row-r';
+    const rowCls=baseRowCls+(f.dropped?' row-dropped':'')+(f.fading?' row-fading':'');
+    const prev=prevData[f.id];
+    const changed=prev ? f.data.map((b,i)=>b!==prev[i]?i:-1).filter(i=>i>=0) : [];
+    const atkCls=f.label==='F'?'fuzz':f.label==='S'?'injected':
+                 f.label==='P'?'injected':f.label==='B'?'fuzzed':
+                 f.label==='U'?'fuzzed':f.label==='M'?'injected':'changed';
+    const bytes=Array(8).fill(0).map((_,i)=>i<f.dlc ? `<td><span class="byte-cell${isAtk&&changed.includes(i)?' '+atkCls:''}">${h2(f.data[i])}</span></td>` : '<td style="color:var(--text3)">—</td>');
+    const lblCls=f.label==='T'?'lbl-T':f.label==='S'?'lbl-S':f.label==='F'?'lbl-F':
+                 f.label==='P'?'lbl-P':f.label==='B'?'lbl-B':
+                 f.label==='U'?'lbl-U':f.label==='M'?'lbl-M':'lbl-R';
+    const ts=f.ts.toFixed(3);
+    const decoded=decodeFrame(f.id, f.data);
+    const idColor=f.label==='T'?'var(--red)':f.label==='S'?'var(--purple)':
+                  f.label==='F'?'var(--orange)':f.label==='U'?'var(--suspension)':
+                  f.label==='M'?'var(--masquerade)':'var(--blue)';
+    return `<tr class="${rowCls}">
+      <td style="color:var(--text3)">${ts}</td>
+      <td style="color:${idColor}">0x${f.id}</td>
+      <td>${f.dlc}</td>
+      ${bytes.join('')}
+      <td><span class="lbl ${lblCls}">${f.label}</span></td>
+      <td style="font-size:10px;color:var(--text3);max-width:140px;overflow:hidden;text-overflow:ellipsis">${decoded}</td>
+    </tr>`;
+  }).join('');
+}
+
+function scheduleAutoIps(mode){
+  clearAutoIps();
+  if(!AUTO_IPS_ATTACKS.includes(mode)) return;
+  if(!running) return;
+  if(ipsActive) return;
+  autoIpsForAtk=mode;
+  autoIpsDeadline=Date.now()+AUTO_IPS_DELAY_MS;
+  addIDS('[Auto-IPS] streaming detector armed — '+(AUTO_IPS_DELAY_MS/1000)+'s 안에 자동 차단 시퀀스 발동','ips','info');
+  // 1초마다 남은 시간 atkDesc에 카운트다운 표시
+  const baseDesc=ATK_DESCS[mode]||'';
+  const tick=()=>{
+    if(!autoIpsDeadline) return;
+    const remain=Math.max(0,Math.ceil((autoIpsDeadline-Date.now())/1000));
+    const el=document.getElementById('atkDesc');
+    if(el && activeAtk===mode){
+      el.textContent=baseDesc+'  ⏱ Auto-IPS in '+remain+'s';
+    }
+  };
+  tick();
+  autoIpsCountdownId=setInterval(tick,1000);
+  autoIpsTimerId=setTimeout(()=>{
+    autoIpsTimerId=null;
+    if(autoIpsCountdownId){ clearInterval(autoIpsCountdownId); autoIpsCountdownId=null; }
+    autoIpsDeadline=0;
+    if(!running) return;
+    if(activeAtk!==mode) return;
+    if(ipsActive) return;
+    addIDS('[Auto-IPS] 15초 경과 — streaming row-level detector가 공격 탐지, IPS 자동 발동','ips','warn');
+    activateIPS();
+  }, AUTO_IPS_DELAY_MS);
+}
+
 function setAtk(mode){
   activeAtk=mode;
   if(mode!=='busoff') busoffEcus.clear();
@@ -582,6 +746,12 @@ function setAtk(mode){
     addIDS('공격 시작: '+(names[mode]||mode),'ids','crit');
   }
   if(typeof vsUpdateMode==='function') vsUpdateMode(mode);
+  // Auto-IPS 재설정 — 공격이 바뀔 때마다 타이머 재설정
+  if(AUTO_IPS_ATTACKS.includes(mode) && running && !ipsActive){
+    scheduleAutoIps(mode);
+  } else {
+    clearAutoIps();
+  }
 }
 
 function updateStatus(){
@@ -612,12 +782,19 @@ function startSim(){
                  malfunc:'Malfunction Injection (real)',replay:'Replay Attack',busoff:'Bus-Off Attack'};
     addIDS('공격 모드 활성 상태로 시작: '+(names[activeAtk]||activeAtk),'ids','crit');
   }
+  // Auto-IPS — Start 시점에 4개 공격이 이미 선택돼 있으면 타이머 시작
+  if(AUTO_IPS_ATTACKS.includes(activeAtk) && !ipsActive){
+    scheduleAutoIps(activeAtk);
+  }
   simInterval=setInterval(simTick, 200);
 }
 
 function stopSim(){
   running=false;
   clearInterval(simInterval);
+  // Auto-IPS 타이머/필터 해제
+  clearAutoIps();
+  stopFrameFiltering();
   // 캡처 중이었다면 타이머 취소 후 자동 저장
   if(captureTimerId){ clearTimeout(captureTimerId); captureTimerId=null; }
   if(captureCountdownId){ clearInterval(captureCountdownId); captureCountdownId=null; }
@@ -1070,9 +1247,18 @@ function activateIPS(){
     return;
   }
 
+  // 자동 IPS 타이머가 떠있으면 정리(수동 활성화 우선)
+  clearAutoIps();
+
   ipsActive=true;
   ipsCurrentAtk=activeAtk;
   ipsStep=0;
+
+  // streaming row-level drop — 4개 자동 IPS 공격이면 시각적으로 프레임 하나씩 제거
+  if(AUTO_IPS_ATTACKS.includes(activeAtk)){
+    startFrameFiltering(activeAtk);
+    addIDS('[IPS] streaming row-level filter 활성 — '+Array.from(ATK_LABEL_SETS[activeAtk]).join('/')+' 라벨 프레임 drop 시작','ips','warn');
+  }
 
   // IPS 버튼 상태 변경
   const btn=document.getElementById('ipsBtn');
@@ -1196,6 +1382,9 @@ function completeIPS(playbook, total){
   // IDS 성공 메시지
   addIDS('=== IPS 완료 — '+playbook.name+' 차단 성공. 시스템 정상 복원 ===','ips','ok');
 
+  // streaming filter 정리
+  stopFrameFiltering();
+
   // 공격 모드를 Normal로 복원
   setTimeout(()=>{
     setAtk('none');
@@ -1212,6 +1401,7 @@ function completeIPS(playbook, total){
 function stopIPS(){
   ipsActive=false;
   if(ipsInterval){ clearInterval(ipsInterval); ipsInterval=null; }
+  stopFrameFiltering();
   const btn=document.getElementById('ipsBtn');
   if(btn){ btn.className='btn ips-idle'; btn.textContent='🛡️ IPS'; btn.disabled=false; }
 }
