@@ -15,11 +15,8 @@
     <span class="badge-pill badge-r">Normal (R)</span>
     <span class="badge-pill badge-t">Flooding (T)</span>
     <span class="badge-pill badge-sim">Spoofing (sim)</span>
-    <span class="badge-pill badge-sim" style="color:var(--orange);border-color:rgba(255,166,87,.3)">Fuzzing (sim)</span>
-    <span class="badge-pill badge-sim" style="color:var(--teal);border-color:rgba(86,212,212,.3)">Replay (sim)</span>
-    <span class="badge-pill badge-sim" style="color:var(--busoff);border-color:rgba(255,123,114,.3)">Bus-Off (sim)</span>
-    <span class="badge-pill badge-sim" style="color:var(--suspension);border-color:rgba(232,121,249,.3)">Suspension (sim)</span>
-    <span class="badge-pill badge-sim" style="color:var(--masquerade);border-color:rgba(163,230,53,.3)">Masquerade (sim)</span>
+    <span class="badge-pill badge-sim" style="color:var(--orange);border-color:rgba(255,166,87,.3)">Fuzzing (real)</span>
+    <span class="badge-pill badge-warn">Malfunction (real)</span>
   </div>
   <a href="realism.html" style="margin-left:auto;font-size:11px;color:var(--blue);text-decoration:none;border:1px solid rgba(88,166,255,.3);padding:4px 10px;border-radius:6px;background:rgba(88,166,255,.08)" title="공격 유형별 현실성 평가">📊 현실성 평가</a>
   <div style="font-size:11px;color:var(--text3)">Dataset: OTIDS Sonata 2017 &nbsp;|&nbsp; 500 Kbps</div>
@@ -47,10 +44,6 @@
     <button class="atk-btn" id="btn_spoof" onclick="setAtk('spoof')">&#127917; Spoofing (sim)</button>
     <button class="atk-btn" id="btn_fuzz" onclick="setAtk('fuzz')">&#128256; Fuzzing (real)</button>
     <button class="atk-btn" id="btn_malfunc" onclick="setAtk('malfunc')">&#9888; Malfunction (real)</button>
-    <button class="atk-btn" id="btn_replay" onclick="setAtk('replay')">&#128257; Replay (sim)</button>
-    <button class="atk-btn" id="btn_busoff" onclick="setAtk('busoff')">&#128308; Bus-Off (sim)</button>
-    <button class="atk-btn" id="btn_suspension" onclick="setAtk('suspension')">&#128663; Suspension (sim)</button>
-    <button class="atk-btn" id="btn_masquerade" onclick="setAtk('masquerade')">&#128373; Masquerade (sim)</button>
     <div class="status-indicator">
       <div class="dot stopped" id="statusDot"></div>
       <span id="statusTxt" style="font-size:12px;color:var(--text2)">Stopped</span>
@@ -252,8 +245,7 @@
       <span class="cl-item"><span class="cl-sq" style="background:#f85149"></span> Flood</span>
       <span class="cl-item"><span class="cl-sq" style="background:#bc8cff"></span> Spoof</span>
       <span class="cl-item"><span class="cl-sq" style="background:#ffa657"></span> Fuzz</span>
-      <span class="cl-item"><span class="cl-sq" style="background:#56d4d4"></span> Replay</span>
-      <span class="cl-item"><span class="cl-sq" style="background:#ff7b72"></span> Bus-Off</span>
+      <span class="cl-item"><span class="cl-sq" style="background:#fdc800"></span> Malfunction</span>
     </div>
   </div>
   <div class="chart-wrap" style="height:100px">
@@ -348,7 +340,8 @@
 <footer>
   Hyundai Sonata CAN Bus Security Simulator &nbsp;|&nbsp;
   Dataset: <span>OTIDS (Open CAN IDS Dataset) — Flooding, Fuzzing, Malfunction</span> &nbsp;|&nbsp;
-  Simulated: <span>Spoofing, Replay, Bus-Off</span> &nbsp;|&nbsp;
+  Simulated: <span>Spoofing</span> &nbsp;|&nbsp;
+  Auto-IPS: <span>15s streaming row-level detector (baejun10/mobility-anomaly-detection 영감)</span> &nbsp;|&nbsp;
   Educational / Research Use Only
 </footer>
 
