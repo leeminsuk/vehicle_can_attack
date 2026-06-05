@@ -102,6 +102,19 @@ a{color:var(--blue);text-decoration:none}
 .frame-table tr.row-masquerade td{color:var(--masquerade);background:rgba(163,230,53,.06)}
 .frame-table tr.new-frame{animation:fadeSlide .25s ease}
 @keyframes fadeSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+/* Streaming IPS row-level drop visualization (baejun10/mobility-anomaly-detection IPS sim 기반) */
+.frame-table tr.row-dropped td{
+  text-decoration:line-through;
+  opacity:.4;
+  background:rgba(248,81,73,.12) !important;
+  color:#b86a6a !important;
+  position:relative;
+  transition:opacity .35s ease, background .35s ease;
+}
+.frame-table tr.row-dropped.row-fading td{opacity:0;background:rgba(248,81,73,.02) !important}
+.frame-table tr.row-dropped td:last-child::after{
+  content:" ✕ DROPPED";color:var(--red);font-weight:700;font-size:9px;margin-left:6px;
+}
 .byte-cell{display:inline-block;font-family:var(--mono);font-size:11px}
 .byte-cell.changed{background:rgba(248,81,73,.3);color:#ffa0a0;border-radius:2px;padding:0 2px}
 .byte-cell.injected{background:rgba(188,140,255,.3);color:#d8baff;border-radius:2px;padding:0 2px}
