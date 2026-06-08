@@ -53,7 +53,7 @@ async function analyzeWithAI(){
 
   const typingRow=addAITyping();
 
-  const modeNames={none:'Normal (no attack)',flood:'DoS Flooding Attack',spoof:'Speed Spoofing Attack',fuzz:'Data Fuzzing Attack'};
+  const modeNames={none:'Normal (no attack)',flood:'DoS Flooding Attack',spoof:'Speed Spoofing Attack',fuzz:'Data Fuzzing Attack',malfunc:'Malfunction Injection Attack',replay:'Replay Attack',busoff:'Bus-Off Attack',suspension:'Suspension ECU Attack',masquerade:'Masquerade Attack'};
   const attackMode=typeof activeAtk!=='undefined'?activeAtk:'none';
   const busLoad=document.getElementById('m_busload').textContent;
   const fps=document.getElementById('m_fps').textContent;
@@ -62,11 +62,12 @@ async function analyzeWithAI(){
   const totalFrames=document.getElementById('m_total').textContent;
   const attackFrames=document.getElementById('m_attack').textContent;
 
-  // Determine if we should try backend first
-  const useBackend = window.location.protocol !== 'file:' && window.location.hostname !== '';
+  // Try backend only if user has no client-side key. If a key is present,
+  // skip backend entirely and call OpenAI directly from the browser.
+  const useBackend = !key && window.location.protocol !== 'file:' && window.location.hostname !== '';
 
   let result=null;
-  let backendFailed=false;
+  let backendFailed=!useBackend;
 
   if(useBackend){
     try{
@@ -82,14 +83,9 @@ async function analyzeWithAI(){
         else if(data.choices&&data.choices[0]){addAIBubble(data.choices[0].message.content,'ai');}
         else{addAIBubble('Unexpected backend response.','err');}
         result='done';
-      } else if(resp.status===503){
-        // No API key on server — fall through to client-side
-        backendFailed=true;
       } else {
-        const errData=await resp.json().catch(()=>({detail:'Unknown error'}));
-        if(typingRow&&typingRow.parentNode)typingRow.remove();
-        addAIBubble('Backend error '+resp.status+': '+(errData.detail||resp.statusText),'err');
-        result='done';
+        // Backend unavailable (404 = not deployed, 503 = no server key, etc.) — fall through
+        backendFailed=true;
       }
     }catch(e){
       backendFailed=true;
